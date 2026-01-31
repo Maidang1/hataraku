@@ -185,7 +185,7 @@ Phase 7: Polish
 
 ---
 
-- [ ] 1. Define Tool Interface and Types
+- [x] 1. Define Tool Interface and Types
 
   **What to do**:
   - **首先安装 Zod**: `bun add zod`
