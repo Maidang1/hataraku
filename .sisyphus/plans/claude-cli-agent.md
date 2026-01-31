@@ -787,7 +787,7 @@ Phase 7: Polish
 
 ### Phase 7: Polish
 
-- [ ] 17. Write Documentation
+- [x] 17. Write Documentation
 
   **What to do**:
   - 更新 `README.md`
@@ -808,9 +808,9 @@ Phase 7: Polish
   - 现有 `README.md`
 
   **Acceptance Criteria**:
-  - [ ] README 包含安装命令
-  - [ ] README 包含使用示例
-  - [ ] README 包含环境变量说明
+  - [x] README 包含安装命令
+  - [x] README 包含使用示例
+  - [x] README 包含环境变量说明
 
   **Commit**: YES
   - Message: `docs: write README and add LICENSE`
