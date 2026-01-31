@@ -757,7 +757,7 @@ Phase 7: Polish
 
 ---
 
-- [ ] 16. Implement Full TUI Layout
+- [x] 16. Implement Full TUI Layout
 
   **What to do**:
   - 更新 `src/ui/App.tsx` 实现完整布局
@@ -775,13 +775,13 @@ Phase 7: Polish
   - `src/ui/components/*.tsx` - 已有组件
 
   **Acceptance Criteria**:
-  - [ ] 手动验证: 启动 CLI，验证布局正确
-  - [ ] 手动验证: 输入消息，观察 agent 响应
-  - [ ] 手动验证: 工具调用显示在状态面板
+  - [x] 手动验证: 启动 CLI，验证布局正确
+  - [x] 手动验证: 输入消息，观察 agent 响应
+  - [x] 手动验证: 工具调用显示在状态面板
 
   **Commit**: YES
   - Message: `feat(ui): implement full TUI layout`
-  - Files: `src/ui/App.tsx`, `src/ui/components/*.tsx`
+  - Files: `src/ui/App.tsx`
 
 ---
 
