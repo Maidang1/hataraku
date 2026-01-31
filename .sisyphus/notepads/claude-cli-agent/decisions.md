@@ -52,3 +52,42 @@ Key technical decisions made during implementation.
   - Runtime type checking (rely on TypeScript compiler)
 
 ---
+
+## Task 2: read_file Tool Implementation
+
+### Tool Module Structure Pattern
+- **Decision**: Each tool exports `definition` (ToolDefinition) and `toolName()` function separately
+- **Rationale**: 
+  - Allows agent to reference `definition` for schema without executing function
+  - Clear separation between metadata and implementation
+  - Supports composition patterns for tool aggregation
+- **Pattern**: 
+  ```ts
+  export const definition = createSafeTool({ ... })
+  export async function readFile(input: Input): Promise<ToolResult<string>> { ... }
+  ```
+
+### Bun File API vs Node.js fs
+- **Decision**: Use `Bun.file()` API instead of `fs` module
+- **Rationale**: 
+  - Promise-based by default (no callbacks)
+  - Better error context from Bun runtime
+  - Aligns with project constraint to use Bun APIs
+  - `.exists()` check is non-throwing (better than `fs.existsSync()`)
+- **Implementation Detail**: Check `.stat().isDirectory()` to reject directory reads
+
+### Error Categorization Strategy
+- **Decision**: Differentiate "not found" from "other errors" in error messages
+- **Rationale**: 
+  - Helps users debug (file path typo vs. permission error)
+  - Future: could enable different retry strategies
+- **Pattern**: Use specific checks (`.exists()`) before generic try-catch
+
+### Input Validation Responsibility
+- **Decision**: Minimal validation in tool function; schema validation deferred
+- **Rationale**: 
+  - Tool receives input after agent schema validation
+  - Defensive: still catch invalid types gracefully
+  - Keep tool logic simple and focused
+- **Future**: Add Zod schema when validation becomes complex
+

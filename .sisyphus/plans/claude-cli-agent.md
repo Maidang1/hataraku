@@ -220,7 +220,7 @@ Phase 7: Polish
 
 ### Phase 1: Safe Tools
 
-- [ ] 2. Implement read_file Tool
+- [x] 2. Implement read_file Tool
 
   **What to do**:
   - 创建 `src/tools/read_file.ts`

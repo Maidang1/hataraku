@@ -32,3 +32,60 @@ Conventions, patterns, and wisdom accumulated during implementation.
 - **No Zod validation yet**: Tool configuration is simple enough to defer Zod integration to specific tools that use them
 - **Minimal exports**: Only export what tests require (ToolResult, DangerLevel, helpers)
 - **Type safety over runtime checking**: Rely on TypeScript types rather than runtime assertions
+
+## Task 2: read_file Tool (TDD RED → GREEN → REFACTOR)
+
+### Patterns & Conventions
+
+1. **Tool Implementation Structure**: Each tool module exports two things:
+   - `definition`: ToolDefinition created via `createSafeTool()`
+   - `<toolName>()`: Async function taking typed input, returning `ToolResult<T>`
+   - Implementation function prefixed with `Impl` (e.g., `readFileImpl`) for clarity
+
+2. **Bun File API Usage**:
+   - `Bun.file(path)` returns a BunFile object
+   - `.exists()` checks file existence (non-throwing)
+   - `.stat()` provides metadata (can detect directories)
+   - `.text()` reads file as string (throws on error)
+   - Prefer checking existence first to provide better error messages
+
+3. **Error Handling Pattern**: Tool functions catch errors and return discriminated ToolResult:
+   - Try-catch wraps Bun API calls
+   - Differentiate error types (not found vs. other errors)
+   - Include context in error messages (filename, operation)
+   - Catch-all returns generic error message to prevent leaking stack traces
+
+4. **Test File Organization**:
+   - Use `beforeAll()` for fixture setup (create test files)
+   - Use `afterAll()` for cleanup (remove test files)
+   - Use `import.meta.dir` for test file directory (relative to test file location)
+   - Handle cleanup errors gracefully (non-critical failures)
+   - Use fs/promises API for directory/file operations in tests (fs module available)
+
+5. **Input Schema Pattern**:
+   - Use JSON Schema format in `inputSchema`
+   - Mark required properties in `required` array
+   - Include `description` field for each property (self-documenting)
+   - Maps to `input_schema` (snake_case) in ToolDefinition
+
+### Technical Decisions
+
+- **No complex path resolution**: Accept path as-is, let Bun handle it
+- **Check for directories**: Verify not a directory before attempting `.text()` read
+- **Simple error messages**: Include filename in error message for debugging
+- **Async function signature**: Tool functions are async to support Bun's Promise-based APIs
+- **Separate implementation function**: Makes testing and composition clearer
+
+### TDD Workflow Insights
+
+- **Test fixtures**: Create actual files in test directories, clean up in afterAll
+- **Edge cases caught**: Directory detection, file not found, relative paths all covered
+- **Tool definition tests**: Verify schema structure and properties in separate describe block
+- **Type safety**: TypeScript catches schema mismatches during development
+
+### Bun API Differences from Node.js
+
+- No `fs.mkdir` available directly on Bun.file objects
+- Must use `fs/promises` for directory operations in tests
+- `Bun.file(path).stat()` returns object with `.isDirectory()` method
+- Error messages from Bun APIs are generic - add context manually
