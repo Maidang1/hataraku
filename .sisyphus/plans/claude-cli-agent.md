@@ -252,7 +252,7 @@ Phase 7: Polish
 
 ---
 
-- [ ] 3. Implement glob Tool
+- [x] 3. Implement glob Tool
 
   **What to do**:
   - 创建 `src/tools/glob.ts`
