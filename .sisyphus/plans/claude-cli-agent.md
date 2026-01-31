@@ -385,7 +385,7 @@ Phase 7: Polish
 
 ### Phase 3: Basic TUI
 
-- [ ] 6. Create Basic TUI Shell
+- [x] 6. Create Basic TUI Shell
 
   **What to do**:
   - 创建 `src/ui/App.tsx` - 主应用组件
@@ -404,11 +404,11 @@ Phase 7: Polish
   - `package.json` - 已有 ink@6.6.0, react@19.2.4
 
   **Acceptance Criteria**:
-  - [ ] 测试: `src/__tests__/ui/App.test.tsx`
+  - [x] 测试: `src/__tests__/ui/App.test.tsx`
     - 测试基本渲染
     - 测试 Ctrl+C 退出
-  - [ ] `bun test src/__tests__/ui/App.test.tsx` → PASS
-  - [ ] 手动验证: 运行 `bun src/ui/App.tsx` 显示基础界面
+  - [x] `bun test src/__tests__/ui/App.test.tsx` → PASS
+  - [x] 手动验证: 运行 `bun src/ui/App.tsx` 显示基础界面
 
   **Commit**: YES
   - Message: `feat(ui): create basic TUI shell with Ink`
@@ -416,7 +416,7 @@ Phase 7: Polish
 
 ---
 
-- [ ] 7. Implement Message Display Component
+- [x] 7. Implement Message Display Component
 
   **What to do**:
   - 创建 `src/ui/components/MessageDisplay.tsx`
@@ -434,10 +434,10 @@ Phase 7: Polish
   - Ink: `<Static items={messages}>`, `<Box>`, `<Text>`
 
   **Acceptance Criteria**:
-  - [ ] 测试: `src/__tests__/ui/components/MessageDisplay.test.tsx`
+  - [x] 测试: `src/__tests__/ui/components/MessageDisplay.test.tsx`
     - 测试消息渲染
     - 测试 streaming 更新
-  - [ ] `bun test src/__tests__/ui/components/MessageDisplay.test.tsx` → PASS
+  - [x] `bun test src/__tests__/ui/components/MessageDisplay.test.tsx` → PASS
 
   **Commit**: YES
   - Message: `feat(ui): implement message display component`
