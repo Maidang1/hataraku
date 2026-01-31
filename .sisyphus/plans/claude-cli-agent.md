@@ -92,7 +92,7 @@
 3. **REFACTOR**: 在保持绿色的情况下重构
 
 ### Test Setup Task
-- [ ] 0. Setup Test Infrastructure
+- [x] 0. Setup Test Infrastructure
   - 验证: `bun test --help` → 显示帮助
   - 创建: `src/__tests__/example.test.ts`
   - 验证: `bun test` → 1 个测试通过
