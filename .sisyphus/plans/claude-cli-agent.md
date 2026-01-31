@@ -628,7 +628,7 @@ Phase 7: Polish
 
 ### Phase 5: Remaining Tools
 
-- [ ] 12. Implement edit_file Tool (search-replace)
+- [x] 12. Implement edit_file Tool (search-replace)
 
   **What to do**:
   - 创建 `src/tools/edit_file.ts`
