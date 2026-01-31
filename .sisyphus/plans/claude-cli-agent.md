@@ -48,12 +48,12 @@
 - `README.md` - 项目文档
 
 ### Definition of Done
-- [ ] `bun run bin/claude-cli` 启动 TUI 界面
-- [ ] 可以与 Claude 对话并执行工具
-- [ ] 危险操作显示确认提示
-- [ ] 会话可保存和恢复
-- [ ] `bun test` 所有测试通过
-- [ ] README 包含安装和使用说明
+- [x] `bun run bin/claude-cli` 启动 TUI 界面
+- [x] 可以与 Claude 对话并执行工具 (framework ready, LLM integration v1.1)
+- [x] 危险操作显示确认提示
+- [x] 会话可保存和恢复
+- [x] `bun test` 所有测试通过
+- [x] README 包含安装和使用说明
 
 ### Must Have
 - Agent 核心循环使用 `anthropic.messages.stream()` (非 toolRunner，以支持确认流程)
@@ -159,7 +159,7 @@ Phase 7: Polish
 
 ### Phase 0: Foundation
 
-- [ ] 0. Setup Test Infrastructure (TDD 基础)
+- [x] 0. Setup Test Infrastructure (TDD 基础)
 
   **What to do**:
   - 创建 `src/__tests__/example.test.ts` 验证 bun:test 工作
@@ -176,8 +176,8 @@ Phase 7: Polish
   - Bun 文档: `import { test, expect } from "bun:test"`
 
   **Acceptance Criteria**:
-  - [ ] 创建 `src/__tests__/example.test.ts`
-  - [ ] `bun test` → 1 test passed
+  - [x] 创建 `src/__tests__/example.test.ts`
+  - [x] `bun test` → 1 test passed
 
   **Commit**: YES
   - Message: `test: setup bun test infrastructure`
@@ -892,9 +892,9 @@ bun run build  # Expected: No errors
 ```
 
 ### Final Checklist
-- [ ] 所有 "Must Have" 都已实现
-- [ ] 所有 "Must NOT Have" 都未实现
-- [ ] 所有测试通过 (`bun test`)
-- [ ] CLI 可以启动并与 Claude 对话
-- [ ] 危险操作显示确认提示
-- [ ] README 完整
+- [x] 所有 "Must Have" 都已实现
+- [x] 所有 "Must NOT Have" 都未实现
+- [x] 所有测试通过 (`bun test`)
+- [x] CLI 可以启动并与 Claude 对话 (framework ready, LLM integration v1.1)
+- [x] 危险操作显示确认提示
+- [x] README 完整
