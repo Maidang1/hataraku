@@ -3,28 +3,23 @@
   "version": "1.0.0",
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
-  "bin": {
-    "claude-cli": "./bin/claude-cli"
-  },
+  "private": false,
   "scripts": {
     "start": "bun run src/index.ts",
-    "dev": "bun --hot src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node"
+    "dev": "bun --hot src/index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/react": "^19.2.10",
-    "ink-testing-library": "^4.0.0"
+    "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
-    "glob": "^13.0.0",
     "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "jotai": "^2.17.0",
     "react": "^19.2.4",
-    "zod": "^3.22.4"
+    "zustand": "^5.0.11"
   }
 }
