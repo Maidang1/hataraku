@@ -1,8 +1,60 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { EventEmitter } from "events";
 import { setLoading } from "../../render/state/loading";
-import { Tool } from "../tools";
-import { getEffectiveConfig } from "../config";
+import { Tool, bashTool } from "../tools";
+import { getEffectiveConfig, type McpServerConfig } from "../config";
+import { loadMcpTools } from "../mcp";
+
+function repairJsonIfUnbalanced(value: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escape = false;
+
+  for (const char of value) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{") stack.push("}");
+    if (char === "[") stack.push("]");
+    if (char === "}" || char === "]") {
+      const expected = stack.pop();
+      if (expected && expected !== char) {
+        stack.push(expected);
+      }
+    }
+  }
+
+  if (stack.length === 0) return value;
+  return value + stack.reverse().join("");
+}
+
+function parseToolInput(jsonStr: string): any | undefined {
+  const trimmed = jsonStr.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const repaired = repairJsonIfUnbalanced(trimmed);
+    if (repaired !== trimmed) {
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+}
 
 export interface AgentEvents {
   userMessage: (message: { role: "user"; content: string }) => void;
@@ -14,6 +66,9 @@ export interface AgentEvents {
   assistantMessageEnd: () => void;
   toolUse: (toolName: string, input: any) => void;
   toolResult: (toolName: string, result: string) => void;
+  mcpServerConnectStart: (serverName: string) => void;
+  mcpServerConnectSuccess: (serverName: string, toolCount: number) => void;
+  mcpServerConnectError: (serverName: string, error: Error) => void;
   error: (error: Error) => void;
 }
 
@@ -22,13 +77,17 @@ class Agent extends EventEmitter {
   client: Anthropic;
   conversationHistory: Anthropic.MessageParam[] = [];
   tools: Map<string, Tool> = new Map();
+  mcpServers?: Record<string, McpServerConfig>;
+  cleanupMcp?: () => Promise<void>;
+  private mcpLoaded = false;
 
   constructor(params: {
     model: string;
     client?: Anthropic;
     tools?: Map<string, Tool>;
+    mcpServers?: Record<string, McpServerConfig>;
   }) {
-    const { model, client, tools } = params;
+    const { model, client, tools, mcpServers } = params;
     super();
     this.model = model;
     const config = getEffectiveConfig();
@@ -39,8 +98,34 @@ class Agent extends EventEmitter {
         authToken: config.authToken || process.env.ANTHROPIC_AUTH_TOKEN,
         apiKey: config.apiKey,
       });
-    this.tools = tools ?? new Map();
+    this.tools = new Map<string, Tool>(tools ?? []);
+    this.tools.set(bashTool.name, bashTool);
+    this.mcpServers = mcpServers;
   }
+
+  async init(params: { includeMcpTools?: boolean } = {}): Promise<void> {
+    const { includeMcpTools } = params;
+    if (includeMcpTools ?? true) {
+      if (this.mcpLoaded) return;
+      const { tools: mcpTools, cleanup } = await loadMcpTools(this.mcpServers, {
+        onServerConnectStart: (serverName) => {
+          this.emit("mcpServerConnectStart", serverName);
+        },
+        onServerConnectSuccess: (serverName, toolCount) => {
+          this.emit("mcpServerConnectSuccess", serverName, toolCount);
+        },
+        onServerConnectError: (serverName, error) => {
+          this.emit("mcpServerConnectError", serverName, error);
+        },
+      });
+      for (const tool of mcpTools) {
+        this.tools.set(tool.name, tool);
+      }
+      this.cleanupMcp = cleanup;
+      this.mcpLoaded = true;
+    }
+  }
+
 
   private getToolSchemas(): Anthropic.Tool[] {
     return Array.from(this.tools.values()).map((tool) => tool.getSchema());
@@ -122,13 +207,16 @@ class Agent extends EventEmitter {
         currentContent.forEach((block, index) => {
           if (block.type === "tool_use") {
             const jsonStr = toolInputJsonMap.get(index);
-            if (jsonStr) {
-              try {
-                (block as Anthropic.ToolUseBlock).input = JSON.parse(jsonStr);
-              } catch (e) {
-                console.error("Failed to parse tool input JSON:", jsonStr, e);
-                (block as Anthropic.ToolUseBlock).input = {};
-              }
+            if (!jsonStr) return;
+            const parsed = parseToolInput(jsonStr);
+            if (parsed !== undefined) {
+              (block as Anthropic.ToolUseBlock).input = parsed;
+            } else {
+              console.warn(
+                "Failed to parse tool input JSON:",
+                jsonStr.length > 500 ? `${jsonStr.slice(0, 500)}...` : jsonStr,
+              );
+              (block as Anthropic.ToolUseBlock).input = {};
             }
           }
         });

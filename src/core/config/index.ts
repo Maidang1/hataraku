@@ -6,6 +6,16 @@ export type ClaudeSettings = {
   env?: Record<string, string>;
   model?: string;
   apiKeyHelper?: string;
+  mcpServers?: Record<string, McpServerConfig>;
+};
+
+export type McpServerConfig = {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
 };
 
 export type EffectiveConfig = {
@@ -13,6 +23,7 @@ export type EffectiveConfig = {
   baseURL?: string;
   authToken?: string;
   apiKey?: string;
+  mcpServers: Record<string, McpServerConfig>;
   sources: string[];
 };
 
@@ -36,7 +47,11 @@ function mergeSettings(base: ClaudeSettings, next: ClaudeSettings): ClaudeSettin
     env: {
       ...(base.env ?? {}),
       ...(next.env ?? {})
-    }
+    },
+    mcpServers: {
+      ...(base.mcpServers ?? {}),
+      ...(next.mcpServers ?? {})
+    },
   };
 }
 
@@ -85,7 +100,8 @@ export function getEffectiveConfig(): EffectiveConfig {
   const baseURL = process.env.ANTHROPIC_BASE_URL;
   const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  const mcpServers = settings.mcpServers ?? {};
 
-  cachedConfig = { model, baseURL, authToken, apiKey, sources };
+  cachedConfig = { model, baseURL, authToken, apiKey, mcpServers, sources };
   return cachedConfig;
 }

@@ -16,10 +16,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
+    "@modelcontextprotocol/sdk": "^1.17.5",
     "ink": "^6.6.0",
     "ink-text-input": "^6.0.0",
     "jotai": "^2.17.0",
     "react": "^19.2.4",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.11",
+    "zod": "^3.25.0"
   }
 }
