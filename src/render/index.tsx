@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
 import { Provider, useAtomValue } from "jotai";
-import * as path from "path";
+import * as os from "os";
 import { Agent } from "../core/agent";
 import { getEffectiveConfig } from "../core/config";
-import { Timeline } from "./components/Timeline";
+import { EventTimeline } from "./components/EventTimeline";
+import { ConfirmSelectMenu, type ConfirmSelectOption } from "./components/ConfirmSelectMenu";
+import { SlashCommandMenu } from "./components/SlashCommandMenu";
 import { StatusBar } from "./components/StatusBar";
-import { runSlashCommand } from "./commands";
+import { Spinner } from "./components/Spinner";
+import { runSlashCommand, SLASH_COMMANDS } from "./commands";
 import { historyAtom } from "./state/history";
 import { loadingAtom } from "./state/loading";
 import { globalStore } from "./state/store";
@@ -17,118 +20,59 @@ import {
   addConfirmEvent,
   addErrorEvent,
   addMcpEvent,
+  addThinkingEvent,
   addToolEvent,
   appendChatContent,
+  appendThinkingContent,
   completeToolEvent,
   eventsAtom,
+  getActiveToolCount,
+  getLatestToolEvent,
+  getPendingConfirmCount,
   resolveConfirmEvent,
   toggleExpanded,
-  type UiMode,
 } from "./state/events";
 
 const { model } = getEffectiveConfig();
 const agent = new Agent({ model });
 
-const PINK_PIG = `
-    (\\   /)
-     (◕‿◕)
-   ~~~∧∧∧~~~
-`;
+function toDisplayCwd(cwd: string): string {
+  const home = os.homedir();
+  if (cwd.startsWith(home)) {
+    return `~${cwd.slice(home.length)}`;
+  }
+  return cwd;
+}
 
-function WelcomeHeader(): React.JSX.Element {
-  const cwd = process.cwd();
-  const projectName = path.basename(cwd);
-  const columns = process.stdout.columns ?? 80;
-  const compact = columns < 90;
-
+function HeaderCard(props: { modelLabel: string; showTip: boolean }): React.JSX.Element {
+  const cwd = toDisplayCwd(process.cwd());
   return (
-    <Box flexDirection="column" paddingBottom={1}>
-      <Box borderStyle="round" borderColor={COLORS.border} paddingX={2} paddingY={1} flexDirection="column">
-        <Box justifyContent="space-between" flexWrap="wrap">
-          <Box>
-            <Text bold color={COLORS.accent}>
-              Coding Agent
-            </Text>
-            <Text dimColor color={COLORS.muted}>
-              {" "}
-              v1.0.0
-            </Text>
-          </Box>
-          <Text dimColor color={COLORS.muted}>
-            Press <Text bold>Esc</Text> for timeline • <Text bold>/help</Text> for commands
+    <Box flexDirection="column" marginBottom={1}>
+      <Box borderStyle="single" borderColor={COLORS.border} paddingX={2} paddingY={0} flexDirection="column">
+        <Text color={COLORS.text} bold>
+          &gt;_ Coding Agent <Text color={COLORS.muted}>(v1.0.0)</Text>
+        </Text>
+        <Text color={COLORS.muted}>
+          model: <Text color={COLORS.text} bold>{props.modelLabel}</Text>
+          <Text color={COLORS.focus}> /model</Text> to change
+        </Text>
+        <Text color={COLORS.muted}>
+          directory: <Text color={COLORS.text}>{cwd}</Text>
+        </Text>
+      </Box>
+
+      {props.showTip && (
+        <Box marginTop={1}>
+          <Text color={COLORS.muted}>
+            Tip: <Text color={COLORS.text}>/help</Text> for commands • <Text color={COLORS.text}>Ctrl+C</Text> to interrupt
           </Text>
         </Box>
-
-        <Box paddingTop={1} flexDirection={compact ? "column" : "row"} flexWrap="wrap">
-          <Box flexDirection="column" width={compact ? undefined : 34} paddingRight={compact ? 0 : 2}>
-            <Text bold color={COLORS.text}>
-              Welcome back
-            </Text>
-            <Box paddingTop={1}>
-              <Text dimColor color={COLORS.accent}>
-                {PINK_PIG}
-              </Text>
-            </Box>
-            <Box paddingTop={1} flexDirection="column">
-              <Text bold color={COLORS.text}>
-                {projectName}
-              </Text>
-              <Text dimColor color={COLORS.muted}>
-                {cwd}
-              </Text>
-              <Text dimColor color={COLORS.muted}>
-                session: {agent.sessionId}
-              </Text>
-            </Box>
-          </Box>
-
-          <Box flexDirection="column" paddingTop={compact ? 1 : 0} paddingLeft={compact ? 0 : 2} flexGrow={1}>
-            <Text bold color={COLORS.accent}>
-              Getting started
-            </Text>
-            <Box flexDirection="column" paddingTop={1}>
-              <Text color={COLORS.textSoft}>
-                • <Text bold>/init</Text> — create `CLAUDE.md` for project instructions
-              </Text>
-              <Text color={COLORS.textSoft}>
-                • <Text bold>/model &lt;name&gt;</Text> — switch model
-              </Text>
-            </Box>
-
-            <Box paddingTop={1}>
-              <Text bold color={COLORS.accent}>
-                Shortcuts
-              </Text>
-            </Box>
-            <Box flexDirection="column" paddingTop={1}>
-              <Text color={COLORS.textSoft}>
-                • <Text bold>Esc</Text> — toggle input/timeline
-              </Text>
-              <Text color={COLORS.textSoft}>
-                • Timeline: <Text bold>↑/↓</Text> select • <Text bold>Enter</Text>/<Text bold>e</Text> expand •{" "}
-                <Text bold>i</Text> type
-              </Text>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
+      )}
     </Box>
   );
 }
 
-function separator(): React.JSX.Element {
-  const columns = process.stdout.columns ?? 80;
-  const line = "─".repeat(Math.max(20, Math.min(columns, 120)));
-  return (
-    <Text dimColor color={COLORS.dim}>
-      {line}
-    </Text>
-  );
-}
-
-function isSelectableEvent(type: string): boolean {
-  return type === "tool" || type === "confirm" || type === "mcp" || type === "error";
-}
+// ── Main App ──
 
 function App(): React.JSX.Element {
   const history = useAtomValue(historyAtom, { store: globalStore });
@@ -136,21 +80,64 @@ function App(): React.JSX.Element {
   const loading = useAtomValue(loadingAtom, { store: globalStore });
 
   const [query, setQuery] = useState("");
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const [mode, setMode] = useState<UiMode>("input");
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(-1);
   const [showWelcome, setShowWelcome] = useState(true);
   const [modelLabel, setModelLabel] = useState(agent.model);
+  const [thinkingMode, setThinkingMode] = useState(() => agent.getThinkingState());
 
   const [confirm, setConfirm] = useState<null | { id: string; toolName: string; reason: string; preview?: string }>(
     null,
   );
+  const [confirmSelectedIndex, setConfirmSelectedIndex] = useState(1);
+  const { stdout } = useStdout();
 
   const assistantEventIdRef = useRef<string | null>(null);
+  const thinkingEventIdRef = useRef<string | null>(null);
+  const terminalColumns = stdout?.columns ?? 120;
+  const terminalRows = stdout?.rows ?? 40;
 
-  const selectableEventIds = useMemo(() => {
-    return events.filter((e) => isSelectableEvent(e.type)).map((e) => e.id);
-  }, [events]);
+  const pendingConfirms = useMemo(() => getPendingConfirmCount(events), [events]);
+  const activeTools = useMemo(() => getActiveToolCount(events), [events]);
+  const latestTool = useMemo(() => getLatestToolEvent(events), [events]);
+  const isModelThinking = loading && activeTools === 0;
+  const maxVisibleEvents = useMemo(() => {
+    const usableRows = Math.max(8, terminalRows - 10);
+    return Math.max(12, Math.min(100, Math.floor(usableRows * 1.6)));
+  }, [terminalRows]);
+  const visibleEvents = useMemo(() => events.slice(-maxVisibleEvents), [events, maxVisibleEvents]);
+  const hiddenEventCount = Math.max(0, events.length - visibleEvents.length);
+  const isSlashSuggesting = useMemo(() => {
+    return query.trimStart().startsWith("/") && !confirm && !loading;
+  }, [query, confirm, loading]);
+  const filteredSlashCommands = useMemo(() => {
+    if (!isSlashSuggesting) return [];
+    const trimmed = query.trim();
+    const rest = trimmed.startsWith("/") ? trimmed.slice(1).trim() : "";
+    const needle = (rest.split(/\s+/)[0] ?? "").toLowerCase();
+    if (!needle) return SLASH_COMMANDS;
+    return SLASH_COMMANDS.filter((command) => command.name.startsWith(needle));
+  }, [isSlashSuggesting, query]);
+  const shouldShowSlashMenu = isSlashSuggesting && filteredSlashCommands.length > 0;
+  const confirmOptions: ConfirmSelectOption[] = useMemo(
+    () => [
+      { key: "allow", label: "Allow", description: "run this request once" },
+      { key: "deny", label: "Deny", description: "cancel this request" },
+    ],
+    [],
+  );
+
+  useEffect(() => {
+    if (!shouldShowSlashMenu) {
+      setSlashSelectedIndex(-1);
+      return;
+    }
+    setSlashSelectedIndex((prev) => {
+      if (prev < 0) return 0;
+      if (prev >= filteredSlashCommands.length) return filteredSlashCommands.length - 1;
+      return prev;
+    });
+  }, [shouldShowSlashMenu, filteredSlashCommands.length]);
 
   useEffect(() => {
     agent.init();
@@ -160,21 +147,10 @@ function App(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    const hasAnyChat = events.some((e) => e.type === "chat" && (e.role === "user" || e.role === "assistant"));
-    if (hasAnyChat) setShowWelcome(false);
-  }, [events]);
-
-  useEffect(() => {
-    if (mode !== "timeline") return;
-    if (selectedEventId) return;
-    if (!selectableEventIds.length) return;
-    setSelectedEventId(selectableEventIds[selectableEventIds.length - 1] ?? null);
-  }, [mode, selectableEventIds, selectedEventId]);
-
-  useEffect(() => {
     const handleUserMessage = (message: { role: "user"; content: string }) => {
       addChatEvent({ role: "user", content: message.content });
       globalStore.set(loadingAtom, true);
+      setShowWelcome(false);
     };
 
     const handleAssistantStart = (message: { role: "assistant"; content: string }) => {
@@ -193,6 +169,21 @@ function App(): React.JSX.Element {
       globalStore.set(loadingAtom, false);
     };
 
+    const handleAssistantThinkingStart = (message: { role: "thinking"; content: string; redacted?: boolean }) => {
+      const id = addThinkingEvent({ content: message.content, redacted: message.redacted });
+      thinkingEventIdRef.current = id;
+    };
+
+    const handleAssistantThinkingDelta = (delta: string) => {
+      const id = thinkingEventIdRef.current;
+      if (!id) return;
+      appendThinkingContent({ id, delta });
+    };
+
+    const handleAssistantThinkingEnd = () => {
+      thinkingEventIdRef.current = null;
+    };
+
     const handleToolUse = (event: { toolUseId: string; toolName: string; input: unknown; preview?: string }) => {
       addToolEvent({ toolUseId: event.toolUseId, toolName: event.toolName, input: event.input, preview: event.preview });
     };
@@ -204,6 +195,7 @@ function App(): React.JSX.Element {
     const handleConfirmRequest = (request: { id: string; toolName: string; reason: string; preview?: string }) => {
       addConfirmEvent({ confirmId: request.id, toolName: request.toolName, reason: request.reason, preview: request.preview });
       setConfirm(request);
+      setConfirmSelectedIndex(1);
     };
 
     const handleMcpConnectStart = (serverName: string) => addMcpEvent(`Connecting: ${serverName}`, "info");
@@ -224,6 +216,9 @@ function App(): React.JSX.Element {
     agent.on("assistantMessageStart", handleAssistantStart);
     agent.on("assistantMessageDelta", handleAssistantDelta);
     agent.on("assistantMessageEnd", handleAssistantEnd);
+    agent.on("assistantThinkingStart", handleAssistantThinkingStart);
+    agent.on("assistantThinkingDelta", handleAssistantThinkingDelta);
+    agent.on("assistantThinkingEnd", handleAssistantThinkingEnd);
     agent.on("toolUse", handleToolUse);
     agent.on("toolResult", handleToolResult);
     agent.on("confirmRequest", handleConfirmRequest);
@@ -240,6 +235,9 @@ function App(): React.JSX.Element {
       agent.off("assistantMessageStart", handleAssistantStart);
       agent.off("assistantMessageDelta", handleAssistantDelta);
       agent.off("assistantMessageEnd", handleAssistantEnd);
+      agent.off("assistantThinkingStart", handleAssistantThinkingStart);
+      agent.off("assistantThinkingDelta", handleAssistantThinkingDelta);
+      agent.off("assistantThinkingEnd", handleAssistantThinkingEnd);
       agent.off("toolUse", handleToolUse);
       agent.off("toolResult", handleToolResult);
       agent.off("confirmRequest", handleConfirmRequest);
@@ -253,71 +251,107 @@ function App(): React.JSX.Element {
     };
   }, []);
 
+  const handleConfirmAllow = (confirmId: string) => {
+    agent.confirmResponse(confirmId, true);
+    resolveConfirmEvent({ confirmId, allowed: true });
+    setConfirm(null);
+    setConfirmSelectedIndex(1);
+  };
+
+  const handleConfirmDeny = (confirmId: string) => {
+    agent.confirmResponse(confirmId, false);
+    resolveConfirmEvent({ confirmId, allowed: false });
+    setConfirm(null);
+    setConfirmSelectedIndex(1);
+  };
+
   useInput((input, key) => {
+    // Confirm mode: dropdown selection takes priority
     if (confirm) {
-      if (input.toLowerCase() === "y") {
-        agent.confirmResponse(confirm.id, true);
-        resolveConfirmEvent({ confirmId: confirm.id, allowed: true });
-        setConfirm(null);
-      } else if (input.toLowerCase() === "n" || key.escape) {
-        agent.confirmResponse(confirm.id, false);
-        resolveConfirmEvent({ confirmId: confirm.id, allowed: false });
-        setConfirm(null);
+      if (key.upArrow || key.downArrow) {
+        setConfirmSelectedIndex((prev) => {
+          const next = key.upArrow ? prev - 1 : prev + 1;
+          return (next + confirmOptions.length) % confirmOptions.length;
+        });
+        return;
+      }
+
+      if (key.return) {
+        const selected = confirmOptions[confirmSelectedIndex]?.key ?? "deny";
+        if (selected === "allow") {
+          handleConfirmAllow(confirm.id);
+          return;
+        }
+        handleConfirmDeny(confirm.id);
+        return;
+      }
+
+      if (key.escape) {
+        handleConfirmDeny(confirm.id);
       }
       return;
     }
 
-    if (key.escape) {
-      setMode((m) => (m === "input" ? "timeline" : "input"));
+    if (key.tab && key.shift) {
+      const next = agent.setThinking({ enabled: !thinkingMode.enabled });
+      setThinkingMode(next);
       return;
     }
 
-    if (mode === "timeline") {
-      if (!selectableEventIds.length) return;
+    // Esc: toggle expand on latest tool event (quick inspect)
+    if (key.escape) {
+      if (latestTool) {
+        toggleExpanded(latestTool.id);
+      }
+      return;
+    }
 
+    if (shouldShowSlashMenu) {
       if (key.upArrow) {
-        const currentIndex = selectedEventId ? selectableEventIds.indexOf(selectedEventId) : selectableEventIds.length;
-        const nextIndex = Math.max(0, currentIndex - 1);
-        setSelectedEventId(selectableEventIds[nextIndex] ?? null);
+        setSlashSelectedIndex((prev) => {
+          const next = prev < 0 ? 0 : prev - 1;
+          return (next + filteredSlashCommands.length) % filteredSlashCommands.length;
+        });
         return;
       }
       if (key.downArrow) {
-        const currentIndex = selectedEventId ? selectableEventIds.indexOf(selectedEventId) : -1;
-        const nextIndex = Math.min(selectableEventIds.length - 1, currentIndex + 1);
-        setSelectedEventId(selectableEventIds[nextIndex] ?? null);
+        setSlashSelectedIndex((prev) => {
+          const next = prev < 0 ? 0 : prev + 1;
+          return next % filteredSlashCommands.length;
+        });
         return;
       }
-      if (input === "i") {
-        setMode("input");
-        return;
-      }
-      if (input === "e" || key.return) {
-        if (selectedEventId) toggleExpanded(selectedEventId);
-        return;
-      }
-      return;
     }
 
+    // Input history navigation
     if (key.upArrow && history.length > 0) {
       const nextIndex = Math.min(historyIndex + 1, history.length - 1);
       setHistoryIndex(nextIndex);
       setQuery(history[nextIndex] || "");
       return;
     }
+
     if (key.downArrow) {
-      const nextIndex = Math.max(0, historyIndex - 1);
-      setHistoryIndex(nextIndex);
-      setQuery(history[nextIndex] || "");
-      return;
+      if (historyIndex <= 0) {
+        setHistoryIndex(-1);
+        setQuery("");
+      } else {
+        const nextIndex = historyIndex - 1;
+        setHistoryIndex(nextIndex);
+        setQuery(history[nextIndex] || "");
+      }
     }
   });
 
   const handleSubmit = async () => {
     if (!query.trim() || loading || confirm) return;
 
-    const currentQuery = query;
+    const selectedCommand =
+      shouldShowSlashMenu && slashSelectedIndex >= 0 ? filteredSlashCommands[slashSelectedIndex] : undefined;
+    const currentQuery = selectedCommand ? `/${selectedCommand.name}` : query;
     setQuery("");
-    setHistoryIndex(0);
+    setHistoryIndex(-1);
+    setSlashSelectedIndex(-1);
 
     const currentHistory = globalStore.get(historyAtom);
     globalStore.set(historyAtom, [currentQuery, ...currentHistory].slice(0, 200));
@@ -327,8 +361,6 @@ function App(): React.JSX.Element {
         agent,
         setModelLabel,
         setShowWelcome,
-        setMode,
-        setSelectedEventId,
       },
       currentQuery,
     );
@@ -339,46 +371,84 @@ function App(): React.JSX.Element {
 
   return (
     <Provider store={globalStore}>
-      <Box flexDirection="column">
-        {showWelcome && (
-          <>
-            <WelcomeHeader />
-          </>
+      <Box flexDirection="column" paddingX={0}>
+        <HeaderCard modelLabel={modelLabel} showTip={showWelcome} />
+
+        {/* Streaming timeline — all events in chronological order */}
+        {events.length > 0 && (
+          <EventTimeline
+            events={visibleEvents}
+            hiddenEventCount={hiddenEventCount}
+            activeConfirmId={confirm?.id ?? null}
+          />
         )}
 
-        <Timeline events={events} mode={mode} selectedEventId={selectedEventId} />
-
-        {loading && (
-          <Box paddingLeft={2}>
-            <Text dimColor color={COLORS.muted}>
-              Thinking…
+        {/* Thinking indicator */}
+        {isModelThinking && !confirm && (
+          <Box marginBottom={1}>
+            <Text color={COLORS.accent}>
+              <Spinner /> thinking
             </Text>
           </Box>
         )}
 
-        <Box paddingTop={1}>{separator()}</Box>
-
-        <Box>
-          <Text color={loading ? COLORS.dim : COLORS.text}>&gt; </Text>
-          <TextInput
-            placeholder={
-              confirm
-                ? "Confirm pending…"
-                : mode === "timeline"
-                  ? "TIMELINE mode (press i to type)"
-                  : loading
-                    ? "Waiting for response..."
-                    : "Type a message or /help"
-            }
-            value={query}
-            onChange={loading || confirm || mode === "timeline" ? () => {} : setQuery}
-            onSubmit={handleSubmit}
+        {/* Input area */}
+        {confirm && (
+          <ConfirmSelectMenu
+            toolName={confirm.toolName}
+            reason={confirm.reason}
+            preview={confirm.preview}
+            options={confirmOptions}
+            selectedIndex={confirmSelectedIndex}
           />
+        )}
+
+        <Box
+          borderStyle="single"
+          borderTop
+          borderBottom={false}
+          borderLeft={false}
+          borderRight={false}
+          borderColor={COLORS.border}
+          paddingTop={0}
+          marginTop={events.length > 0 ? 0 : 1}
+        >
+          <Box>
+            <Text color={COLORS.accent} bold>❯ </Text>
+            <TextInput
+              placeholder={
+                confirm
+                  ? "Confirm pending… use ↑/↓ then Enter"
+                  : loading
+                    ? "Waiting for response…"
+                    : "Message…"
+              }
+              value={query}
+              onChange={loading || confirm ? () => {} : setQuery}
+              onSubmit={handleSubmit}
+            />
+          </Box>
         </Box>
 
-        <Box paddingTop={1}>
-          <StatusBar mode={mode} model={modelLabel} sessionId={agent.sessionId} />
-        </Box>
+        {shouldShowSlashMenu && (
+          <SlashCommandMenu
+            commands={filteredSlashCommands}
+            selectedIndex={slashSelectedIndex}
+            query={query}
+            terminalColumns={terminalColumns}
+          />
+        )}
+
+        <StatusBar
+          model={modelLabel}
+          cwd={toDisplayCwd(process.cwd())}
+          terminalColumns={terminalColumns}
+          pendingConfirms={pendingConfirms}
+          activeTools={activeTools}
+          latestTool={latestTool?.toolName ?? ""}
+          thinking={isModelThinking}
+          thinkingModeEnabled={thinkingMode.enabled}
+        />
       </Box>
     </Provider>
   );

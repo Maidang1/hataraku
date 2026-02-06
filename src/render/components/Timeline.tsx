@@ -8,23 +8,24 @@ import { COLORS } from "../theme";
 
 export function Timeline(props: {
   events: UiEvent[];
-  mode: "input" | "timeline";
+  mode: "composer" | "activity" | "conversation";
   selectedEventId: string | null;
 }): React.JSX.Element {
   const { events, mode, selectedEventId } = props;
+  const focused = mode === "activity";
 
   return (
     <Box flexDirection="column">
       {events.map((event) => {
         const selected = selectedEventId === event.id;
         if (event.type === "chat") return <ChatBubble key={event.id} event={event} />;
-        if (event.type === "tool") return <ToolCard key={event.id} event={event} selected={selected} mode={mode} />;
-        if (event.type === "confirm") return <ConfirmCard key={event.id} event={event} selected={selected} mode={mode} />;
+        if (event.type === "tool") return <ToolCard key={event.id} event={event} selected={selected} focused={focused} />;
+        if (event.type === "confirm") return <ConfirmCard key={event.id} event={event} selected={selected} focused={focused} />;
         if (event.type === "mcp") {
           return (
             <Box key={event.id}>
               <Text dimColor color={COLORS.dim}>
-                {selected && mode === "timeline" ? "▶ " : ""}
+                {selected && mode === "activity" ? "▶ " : ""}
                 🔌 {event.message}
               </Text>
             </Box>
@@ -34,7 +35,7 @@ export function Timeline(props: {
           return (
             <Box key={event.id} flexDirection="column">
               <Text color={COLORS.danger}>
-                {selected && mode === "timeline" ? "▶ " : ""}
+                {selected && mode === "activity" ? "▶ " : ""}
                 Error: {event.message}
               </Text>
               {event.expanded && event.stack && (

@@ -7,24 +7,49 @@ export type SlashCommandContext = {
   agent: Agent;
   setModelLabel: (model: string) => void;
   setShowWelcome: (value: boolean) => void;
-  setMode: (mode: "input" | "timeline") => void;
-  setSelectedEventId: (id: string | null) => void;
+};
+
+export type SlashCommandMeta = {
+  name: string;
+  description: string;
+  usage?: string;
 };
 
 type SlashCommandHandler = (ctx: SlashCommandContext, args: string[]) => Promise<void> | void;
 
+export const SLASH_COMMANDS: SlashCommandMeta[] = [
+  {
+    name: "help",
+    description: "show this message",
+  },
+  {
+    name: "clear",
+    description: "clear conversation",
+  },
+  {
+    name: "model",
+    description: "switch model",
+    usage: "<name>",
+  },
+  {
+    name: "session",
+    description: "show session info",
+  },
+  {
+    name: "init",
+    description: "create CLAUDE.md",
+  },
+];
+
 const HELP_TEXT = [
   "Shortcuts:",
-  "- Esc: toggle INPUT/TIMELINE",
-  "- TIMELINE: Up/Down select, Enter/e expand, i back to input",
-  "- Confirm: y allow, n/Esc deny",
+  "- Esc: toggle expand last tool result",
+  "- Shift+Tab: toggle thinking mode",
+  "- Up/Down: input history",
+  "- Confirm: Up/Down select, Enter confirm, Esc deny",
   "",
   "Commands:",
-  "- /help",
-  "- /clear",
-  "- /model <name>",
-  "- /session",
-  "- /init",
+  ...SLASH_COMMANDS.map((cmd) => `- /${cmd.name}${cmd.usage ? ` ${cmd.usage}` : ""} — ${cmd.description}`),
 ].join("\n");
 
 const handlers: Record<string, SlashCommandHandler> = {
@@ -34,8 +59,6 @@ const handlers: Record<string, SlashCommandHandler> = {
   clear: (ctx) => {
     clearEvents();
     ctx.setShowWelcome(true);
-    ctx.setMode("input");
-    ctx.setSelectedEventId(null);
   },
   model: (ctx, args) => {
     const next = args.join(" ").trim();

@@ -71,6 +71,9 @@ export interface AgentEvents {
   }) => void;
   assistantMessageDelta: (delta: string) => void;
   assistantMessageEnd: () => void;
+  assistantThinkingStart: (message: { role: "thinking"; content: string; redacted?: boolean }) => void;
+  assistantThinkingDelta: (delta: string) => void;
+  assistantThinkingEnd: () => void;
   toolUse: (event: { toolUseId: string; toolName: string; input: unknown; preview?: string }) => void;
   toolResult: (event: {
     toolUseId: string;
@@ -111,6 +114,9 @@ class Agent extends EventEmitter {
   private confirmResolvers: Map<string, (allowed: boolean) => void> = new Map();
   private confirmCounter = 0;
   private localToolCounter = 0;
+  readonly maxTokens = 4096;
+  private thinkingEnabled = false;
+  private thinkingBudgetTokens = 2048;
 
   constructor(params: {
     model: string;
@@ -174,6 +180,22 @@ class Agent extends EventEmitter {
     this.confirmResolvers.delete(confirmId);
     this.logger.append({ type: "confirm_response", ts: new Date().toISOString(), confirmId, allowed });
     resolver(allowed);
+  }
+
+  getThinkingState(): { enabled: boolean; budgetTokens: number } {
+    return {
+      enabled: this.thinkingEnabled,
+      budgetTokens: this.thinkingBudgetTokens,
+    };
+  }
+
+  setThinking(params: { enabled: boolean; budgetTokens?: number }): { enabled: boolean; budgetTokens: number } {
+    const { enabled, budgetTokens } = params;
+    this.thinkingEnabled = enabled;
+    if (enabled && budgetTokens !== undefined) {
+      this.thinkingBudgetTokens = budgetTokens;
+    }
+    return this.getThinkingState();
   }
 
   private requestConfirmation(params: { toolName: string; reason: string; preview?: string }): Promise<boolean> {
@@ -386,30 +408,76 @@ class Agent extends EventEmitter {
       let continueLoop = true;
 
       while (continueLoop) {
+        const thinking = this.thinkingEnabled
+          ? ({
+              type: "enabled",
+              budget_tokens: this.thinkingBudgetTokens,
+            } satisfies Anthropic.ThinkingConfigEnabled)
+          : undefined;
         const stream = await this.client.messages.create({
-          max_tokens: 1024,
+          max_tokens: this.maxTokens,
           messages: this.conversationHistory,
           model: this.model,
           stream: true,
           system: this.getSystemPrompt(),
           tools: this.getToolSchemas(),
+          thinking,
         });
 
         let isFirstDelta = true;
         let currentContent: Anthropic.ContentBlock[] = [];
         let stopReason: string | null = null;
+        let thinkingStarted = false;
+        let thinkingEnded = false;
         // 用于存储每个 tool_use block 的 input JSON 字符串
         const toolInputJsonMap = new Map<number, string>();
 
+        const startThinking = (initialContent: string, redacted = false) => {
+          if (thinkingStarted) return;
+          this.emit("assistantThinkingStart", { role: "thinking", content: initialContent, redacted });
+          this.logger.append({
+            type: "assistant_thinking_start",
+            ts: new Date().toISOString(),
+            content: initialContent,
+            redacted,
+          });
+          thinkingStarted = true;
+          thinkingEnded = false;
+        };
+
+        const appendThinking = (delta: string) => {
+          if (!thinkingStarted) {
+            startThinking(delta);
+            return;
+          }
+          this.emit("assistantThinkingDelta", delta);
+          this.logger.append({
+            type: "assistant_thinking_delta",
+            ts: new Date().toISOString(),
+            delta,
+          });
+        };
+
+        const endThinking = () => {
+          if (!thinkingStarted || thinkingEnded) return;
+          this.emit("assistantThinkingEnd");
+          this.logger.append({ type: "assistant_thinking_end", ts: new Date().toISOString() });
+          thinkingEnded = true;
+        };
+
         for await (const messageEvent of stream) {
           if (messageEvent.type === "content_block_start") {
-            currentContent.push(messageEvent.content_block);
+            currentContent[messageEvent.index] = messageEvent.content_block;
             if (messageEvent.content_block.type === "tool_use") {
               toolInputJsonMap.set(messageEvent.index, "");
+            } else if (messageEvent.content_block.type === "redacted_thinking") {
+              startThinking("[thinking is redacted]", true);
+              endThinking();
             }
           } else if (messageEvent.type === "content_block_delta") {
             const index = messageEvent.index;
             if (messageEvent.delta.type === "text_delta") {
+              endThinking();
               if (isFirstDelta) {
                 this.emit("assistantMessageStart", {
                   role: "assistant",
@@ -437,6 +505,15 @@ class Agent extends EventEmitter {
                 (currentContent[index] as Anthropic.TextBlock).text +=
                   messageEvent.delta.text;
               }
+            } else if (messageEvent.delta.type === "thinking_delta") {
+              appendThinking(messageEvent.delta.thinking);
+              if (currentContent[index] && currentContent[index].type === "thinking") {
+                (currentContent[index] as Anthropic.ThinkingBlock).thinking += messageEvent.delta.thinking;
+              }
+            } else if (messageEvent.delta.type === "signature_delta") {
+              if (currentContent[index] && currentContent[index].type === "thinking") {
+                (currentContent[index] as Anthropic.ThinkingBlock).signature = messageEvent.delta.signature;
+              }
             } else if (messageEvent.delta.type === "input_json_delta") {
               // 累积 tool input JSON 字符串
               const currentJson = toolInputJsonMap.get(index) || "";
@@ -449,6 +526,7 @@ class Agent extends EventEmitter {
             stopReason = messageEvent.delta.stop_reason || null;
           }
         }
+        endThinking();
 
         // 解析所有 tool_use 的 input
         currentContent.forEach((block, index) => {

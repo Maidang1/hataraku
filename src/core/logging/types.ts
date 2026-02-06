@@ -3,6 +3,9 @@ export type SessionEvent =
   | { type: "user_message"; ts: string; content: string }
   | { type: "assistant_start"; ts: string; content: string }
   | { type: "assistant_delta"; ts: string; delta: string }
+  | { type: "assistant_thinking_start"; ts: string; content: string; redacted?: boolean }
+  | { type: "assistant_thinking_delta"; ts: string; delta: string }
+  | { type: "assistant_thinking_end"; ts: string }
   | { type: "assistant_end"; ts: string }
   | { type: "tool_use"; ts: string; toolName: string; input: unknown; preview?: string }
   | {
