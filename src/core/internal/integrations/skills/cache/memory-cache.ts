@@ -104,6 +104,7 @@ export class MemoryCache implements ICache {
     this.cleanupInterval = setInterval(() => {
       this.clearExpired();
     }, DEFAULT_CLEANUP_INTERVAL_MS);
+    this.cleanupInterval.unref?.();
   }
 
   /**

@@ -32,6 +32,10 @@ export class CacheManager {
     this.cache.clear();
   }
 
+  public stopCleanup(): void {
+    this.cache.stopCleanup?.();
+  }
+
   public setCache(cache: ICache): void {
     this.cache = cache;
   }

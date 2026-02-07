@@ -246,6 +246,15 @@ function byTimeDesc(a: UiEvent, b: UiEvent): number {
   return parseTs(b.ts) - parseTs(a.ts);
 }
 
+function parseMcpServerKey(message: string): string {
+  const trimmed = message.trim();
+  const match = trimmed.match(/^[^:]+:\s(.+?)(?:\s\(|\s—|$)/);
+  if (match?.[1]) {
+    return match[1];
+  }
+  return trimmed;
+}
+
 export function getConversationEvents(events: UiEvent[]): ChatEvent[] {
   return events.filter((event): event is ChatEvent => event.type === "chat");
 }
@@ -264,7 +273,7 @@ export function getActivityEvents(events: UiEvent[]): Array<ToolEvent | ConfirmE
       dedupedMcp.push(event);
       continue;
     }
-    const server = event.message.split(":")[1]?.trim().split(" ")[0] || event.message;
+    const server = parseMcpServerKey(event.message);
     const existing = latestInfoByServer.get(server);
     if (!existing || parseTs(event.ts) > parseTs(existing.ts)) {
       latestInfoByServer.set(server, event);

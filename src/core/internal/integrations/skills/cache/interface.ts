@@ -6,4 +6,5 @@ export interface ICache {
   has(key: string): boolean;
   delete(key: string): void;
   clear(): void;
+  stopCleanup?(): void;
 }

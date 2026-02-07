@@ -260,10 +260,11 @@ function McpEventRow(props: { event: McpEvent }): React.JSX.Element {
       : event.level === "warn"
         ? COLORS.warning
         : TEXT.dim;
+  const message = oneLine(event.message, 120);
 
   return (
     <Box flexDirection="column" marginBottom={SPACE.sm}>
-      <EventHeader icon="🔌" iconColor={color} title={event.message} titleColor={color} />
+      <EventHeader icon="*" iconColor={color} title={message} titleColor={color} />
     </Box>
   );
 }

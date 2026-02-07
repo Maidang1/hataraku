@@ -80,6 +80,11 @@ export class SkillsManager {
     this.cacheManager.clear();
   }
 
+  public dispose(): void {
+    this.cacheManager.stopCleanup();
+    this.cacheManager.clear();
+  }
+
   public getEventEmitter(): SkillEventEmitter {
     return this.eventEmitter;
   }

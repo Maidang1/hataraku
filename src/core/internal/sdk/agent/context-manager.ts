@@ -14,6 +14,8 @@ export type CompactResult = {
 };
 
 const TRANSCRIPT_CHAR_LIMIT = 120_000;
+const PRESERVED_TEXT_CHAR_LIMIT = 16_000;
+const PRESERVED_TOOL_RESULT_CHAR_LIMIT = 12_000;
 
 export class ContextManager {
   private client: Anthropic;
@@ -99,11 +101,14 @@ export class ContextManager {
   }
 
   private selectCompactionBoundary(messages: Anthropic.MessageParam[], keepRecent: number): number {
-    const minKeep = Math.max(2, keepRecent);
-    if (messages.length <= minKeep + 1) return 0;
+    if (messages.length < 2) return 0;
 
+    const minKeep = Math.max(1, keepRecent);
     let index = messages.length - minKeep;
-    if (index <= 0) return 0;
+    if (index <= 0) {
+      index = Math.floor(messages.length / 2);
+    }
+    index = Math.max(1, Math.min(index, messages.length - 1));
 
     // Keep tool-use and tool-result turns together as much as possible.
     while (index > 1) {
@@ -117,6 +122,13 @@ export class ContextManager {
     }
 
     return index;
+  }
+
+  sanitizePreservedTail(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+    return messages.map((message) => ({
+      ...message,
+      content: this.sanitizeMessageContent(message.content),
+    }));
   }
 
   private hasToolResult(message: Anthropic.MessageParam): boolean {
@@ -200,5 +212,37 @@ export class ContextManager {
         return JSON.stringify(block);
       })
       .join("\n");
+  }
+
+  private sanitizeMessageContent(content: Anthropic.MessageParam["content"]): Anthropic.MessageParam["content"] {
+    if (typeof content === "string") {
+      return this.truncateMiddle(content, PRESERVED_TEXT_CHAR_LIMIT, "text");
+    }
+    if (!Array.isArray(content)) return content;
+
+    return content.map((block) => {
+      if (block.type === "text") {
+        return { ...block, text: this.truncateMiddle(block.text, PRESERVED_TEXT_CHAR_LIMIT, "text") };
+      }
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        return {
+          ...block,
+          content: this.truncateMiddle(block.content, PRESERVED_TOOL_RESULT_CHAR_LIMIT, "tool_result"),
+        };
+      }
+      return block;
+    });
+  }
+
+  private truncateMiddle(value: string, limit: number, label: string): string {
+    if (value.length <= limit) return value;
+    const head = Math.max(0, Math.floor(limit * 0.7));
+    const tail = Math.max(0, limit - head);
+    const omitted = value.length - head - tail;
+    return [
+      value.slice(0, head),
+      `\n...[${label} truncated for context, omitted ${omitted} chars]...\n`,
+      value.slice(value.length - tail),
+    ].join("");
   }
 }

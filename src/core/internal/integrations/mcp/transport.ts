@@ -11,12 +11,19 @@ import { MCP_CONSTANTS, createTimeoutPromise } from "./utils";
  */
 export function createTransport(config: McpServerConfig): Transport {
   if (config.command) {
-    return new StdioClientTransport({
+    const transport = new StdioClientTransport({
       command: config.command,
       args: config.args ?? [],
       env: config.env,
       cwd: config.cwd,
+      // Prevent MCP child-process stderr output (warnings/links/progress) from
+      // writing directly into the Ink TUI and corrupting redraws.
+      stderr: "pipe",
     });
+
+    // Drain stderr to avoid backpressure if the MCP server is chatty.
+    transport.stderr?.on("data", () => {});
+    return transport;
   }
 
   if (config.url) {

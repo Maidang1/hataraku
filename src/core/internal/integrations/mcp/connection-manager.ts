@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   McpServerConfig,
   ManagedConnection,
@@ -37,26 +38,14 @@ export class ConnectionManager extends EventEmitter {
     if (existing && existing.state === State.CONNECTED) {
       return existing.client;
     }
-
-    // 创建传输层和客户端
-    const transport = createTransport(config);
-    const client = new Client(
-      { name: MCP_CONSTANTS.DEFAULT_CLIENT_NAME, version: MCP_CONSTANTS.DEFAULT_CLIENT_VERSION },
-      { capabilities: {} }
-    );
-
-    // 创建连接记录
-    const connection: ManagedConnection = {
-      serverName,
-      client,
-      transport,
-      config,
-      state: State.CONNECTING,
-      retryCount: 0,
-    };
-
-    this.connections.set(serverName, connection);
+    if (existing) {
+      this.connections.delete(serverName);
+    }
     this.emitStateChange(serverName, State.CONNECTING);
+
+    let latestRetryCount = 0;
+    let connectedClient: Client | null = null;
+    let connectedTransport: Transport | null = null;
 
     try {
       // 使用重试策略连接
@@ -67,17 +56,49 @@ export class ConnectionManager extends EventEmitter {
 
       await retryStrategy.executeWithRetry(
         async () => {
-          await connectWithTimeout(
-            client,
-            transport,
-            config.startupTimeoutSec ?? 30
+          const attemptTransport = createTransport(config);
+          const attemptClient = new Client(
+            { name: MCP_CONSTANTS.DEFAULT_CLIENT_NAME, version: MCP_CONSTANTS.DEFAULT_CLIENT_VERSION },
+            { capabilities: {} }
           );
+
+          try {
+            await connectWithTimeout(
+              attemptClient,
+              attemptTransport,
+              config.startupTimeoutSec ?? 30
+            );
+          } catch (error) {
+            try {
+              await attemptClient.close();
+            } catch {
+              // Ignore close errors for failed attempts.
+            }
+            throw error;
+          }
+
+          connectedClient = attemptClient;
+          connectedTransport = attemptTransport;
         },
         (attempt, _delay) => {
-          connection.retryCount = attempt;
+          latestRetryCount = attempt;
           this.emit("reconnectAttempt", serverName, attempt, config.maxRetries ?? MCP_CONSTANTS.DEFAULT_MAX_RETRIES);
         }
       );
+
+      if (!connectedClient || !connectedTransport) {
+        throw new Error("MCP connection did not return a valid client.");
+      }
+
+      const connection: ManagedConnection = {
+        serverName,
+        client: connectedClient,
+        transport: connectedTransport,
+        config,
+        state: State.CONNECTING,
+        retryCount: latestRetryCount,
+      };
+      this.connections.set(serverName, connection);
 
       // 连接成功
       connection.state = State.CONNECTED;
@@ -88,12 +109,11 @@ export class ConnectionManager extends EventEmitter {
       // 启动健康检查
       this.startHealthCheck(serverName, connection);
 
-      return client;
+      return connection.client;
     } catch (error) {
       // 连接失败
       const err = normalizeError(error, "Connection failed");
-      connection.state = State.FAILED;
-      connection.lastError = err;
+      this.connections.delete(serverName);
       this.emitStateChange(serverName, State.FAILED);
       this.emit("connectionError", serverName, err);
 

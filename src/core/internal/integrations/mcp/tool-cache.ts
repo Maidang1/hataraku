@@ -79,6 +79,7 @@ export class McpToolCache {
         }
       }
     }, MCP_CONSTANTS.CACHE_CLEANUP_INTERVAL_MS);
+    this.cleanupInterval.unref?.();
   }
 
   /**

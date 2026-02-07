@@ -30,6 +30,8 @@ import { isToolErrorResult } from "../../tools/base";
 import { resolveContextSettings, type ResolvedContextSettings } from "../../config/defaults";
 import { ContextManager, type TokenCountResult } from "./context-manager";
 
+const HISTORY_TOOL_RESULT_CHAR_LIMIT = 24_000;
+
 function repairJsonIfUnbalanced(value: string): string {
   const stack: string[] = [];
   let inString = false;
@@ -191,6 +193,7 @@ class Agent extends EventEmitter {
   private lastCompactionBeforeTokens?: number;
   private lastCompactionAfterTokens?: number;
   private stopRequested = false;
+  private disposed = false;
 
   constructor(params: {
     model: string;
@@ -456,6 +459,21 @@ class Agent extends EventEmitter {
     }
   }
 
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.stop();
+    this.skillsManager.dispose();
+    if (this.cleanupMcp) {
+      try {
+        await this.cleanupMcp();
+      } finally {
+        this.cleanupMcp = undefined;
+        this.mcpLoaded = false;
+      }
+    }
+  }
+
 
   private getSystemPrompt(): string {
     let prompt = "You are a helpful coding assistant.\n";
@@ -516,7 +534,7 @@ class Agent extends EventEmitter {
     beforeCount: TokenCountResult;
     aggressive?: boolean;
   }): Promise<boolean> {
-    if (this.conversationHistory.length < 4) return false;
+    if (this.conversationHistory.length < 2) return false;
     const aggressive = params.aggressive ?? false;
     const keepRecentMessages = aggressive
       ? Math.max(2, Math.floor(this.contextSettings.recentMessagesToKeep / 2))
@@ -546,7 +564,10 @@ class Agent extends EventEmitter {
     });
     if (!compacted) return false;
 
-    this.conversationHistory = [compacted.summaryMessage, ...compacted.preservedTail];
+    this.conversationHistory = [
+      compacted.summaryMessage,
+      ...this.contextManager.sanitizePreservedTail(compacted.preservedTail),
+    ];
     const afterCount = await this.contextManager.countTokens(this.conversationHistory);
     this.contextCompactionCount += 1;
     this.lastCompactionAt = new Date().toISOString();
@@ -587,11 +608,19 @@ class Agent extends EventEmitter {
     this.contextManager.updateModel(this.model);
     const reason = params.reason ?? "manual";
     const beforeCount = await this.contextManager.countTokens(this.conversationHistory);
-    const compacted = await this.compactHistory({
+    let compacted = await this.compactHistory({
       reason,
       beforeCount,
       aggressive: params.aggressive,
     });
+    if (!compacted && params.aggressive === undefined) {
+      const retryBeforeCount = await this.contextManager.countTokens(this.conversationHistory);
+      compacted = await this.compactHistory({
+        reason: `${reason}_aggressive`,
+        beforeCount: retryBeforeCount,
+        aggressive: true,
+      });
+    }
     const afterCount = await this.contextManager.countTokens(this.conversationHistory);
     return {
       compacted,
@@ -993,7 +1022,7 @@ class Agent extends EventEmitter {
             toolResults.push({
               type: "tool_result",
               tool_use_id: item.toolUseId,
-              content: item.result.content,
+              content: this.truncateToolResultForHistory(item.result.content),
             });
           }
 
@@ -1020,6 +1049,18 @@ class Agent extends EventEmitter {
       this.currentAbortController = null;
       this.stopRequested = false;
     }
+  }
+
+  private truncateToolResultForHistory(content: string): string {
+    if (content.length <= HISTORY_TOOL_RESULT_CHAR_LIMIT) return content;
+    const head = Math.floor(HISTORY_TOOL_RESULT_CHAR_LIMIT * 0.75);
+    const tail = HISTORY_TOOL_RESULT_CHAR_LIMIT - head;
+    const omitted = content.length - head - tail;
+    return [
+      content.slice(0, head),
+      `\n...[tool_result truncated for context, omitted ${omitted} chars]...\n`,
+      content.slice(content.length - tail),
+    ].join("");
   }
 }
 

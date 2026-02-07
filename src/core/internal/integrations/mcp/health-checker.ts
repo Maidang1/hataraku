@@ -34,6 +34,7 @@ export class HealthChecker {
         callbacks.onUnhealthy?.(normalizeError(error, "Health check failed"));
       }
     }, this.interval);
+    timer.unref?.();
 
     this.timers.set(serverName, timer);
   }

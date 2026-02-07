@@ -1,6 +1,5 @@
 import path from "path";
 import fs from "fs";
-import { render } from "ink";
 import { App } from "../render/index";
 import { exportSessionToMarkdown } from "../core/api/observability";
 import cac, { type CAC } from "cac";
@@ -10,6 +9,20 @@ const CONFIG = {
   DEFAULT_OUTPUT_PATTERN: "session-{id}.md",
   VERSION: "1.0.0",
 } as const;
+
+/**
+ * Ink falls back to CI-style frame appending when CI env vars are present.
+ * In a real interactive terminal, clear CI markers to keep incremental redraw.
+ */
+function normalizeCiEnvForInteractiveTui(): void {
+  const isInteractive = Boolean(process.stdout.isTTY && process.stdin.isTTY);
+  if (!isInteractive) return;
+
+  delete process.env.CI;
+  delete process.env.CONTINUOUS_INTEGRATION;
+  delete process.env.BUILD_NUMBER;
+  delete process.env.RUN_ID;
+}
 
 /**
  * Gets the display name for the CLI based on the binary name
@@ -69,9 +82,11 @@ function setupCli(cli: CAC): void {
       process.exitCode = await handleExportCommand(id, options);
     });
 
-  cli.command("[...args]", "Start TUI").action((_, options) => {
+  cli.command("[...args]", "Start TUI").action(async (_, options) => {
     const yolo = Boolean(options.yolo);
-    render(<App yolo={yolo} />);
+    normalizeCiEnvForInteractiveTui();
+    const { render } = await import("ink");
+    render(<App yolo={yolo} />, { exitOnCtrlC: true });
   });
 }
 

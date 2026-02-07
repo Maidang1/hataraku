@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
 import { Provider, useAtomValue } from "jotai";
 import * as os from "os";
@@ -86,6 +86,7 @@ interface AppProps {
 }
 
 function App({ yolo = false }: AppProps): React.JSX.Element {
+  const { exit } = useApp();
   const history = useAtomValue(historyAtom, { store: globalStore });
   const events = useAtomValue(eventsAtom, { store: globalStore });
   const loading = useAtomValue(loadingAtom, { store: globalStore });
@@ -163,7 +164,7 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
   useEffect(() => {
     agent.init();
     return () => {
-      agent.cleanupMcp?.();
+      void agent.dispose();
     };
   }, []);
 
@@ -334,6 +335,12 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
   };
 
   useInput((input, key) => {
+    if (key.ctrl && input.toLowerCase() === "c") {
+      agent.stop();
+      exit();
+      return;
+    }
+
     // Confirm mode: dropdown selection takes priority
     if (confirm) {
       if (key.upArrow || key.downArrow) {
