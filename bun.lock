@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "coding-agent",
+      "name": "@maidang1/hataraku",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.72.1",
         "@modelcontextprotocol/sdk": "^1.17.5",

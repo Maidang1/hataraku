@@ -55,7 +55,7 @@ function HeaderCard(props: { modelLabel: string; showTip: boolean }): React.JSX.
     <Box flexDirection="column" marginBottom={1}>
       <Box borderStyle="single" borderColor={COLORS.border} paddingX={2} paddingY={0}>
         <Text color={COLORS.brand} bold>
-          &gt;_ Coding Agent
+          &gt;_ Hataraku
         </Text>
         <Text color={COLORS.muted}>  v1.0.0</Text>
       </Box>

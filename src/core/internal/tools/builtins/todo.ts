@@ -11,7 +11,7 @@ export type TodoItem = {
   description?: string;
 };
 
-const TODO_FILE = ".coding-agent/todos.json";
+const TODO_FILE = ".hataraku/todos.json";
 
 function resolveTodoFile(cwd: string): string {
   return path.resolve(cwd, TODO_FILE);

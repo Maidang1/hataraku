@@ -6,7 +6,7 @@ import { exportSessionToMarkdown } from "../core/api/observability";
 import cac, { type CAC } from "cac";
 
 const CONFIG = {
-  SESSION_DIR: ".coding-agent/sessions",
+  SESSION_DIR: ".hataraku/sessions",
   DEFAULT_OUTPUT_PATTERN: "session-{id}.md",
   VERSION: "1.0.0",
 } as const;
@@ -15,11 +15,7 @@ const CONFIG = {
  * Gets the display name for the CLI based on the binary name
  */
 function getDisplayName(argv: string[]): string {
-  const maybeBin = argv[1];
-  if (!maybeBin) return "coding-agent";
-
-  const base = path.basename(maybeBin);
-  return base === "agent" || base === "coding-agent" ? base : "coding-agent";
+  return "hataraku";
 }
 
 /**

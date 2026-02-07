@@ -1,4 +1,4 @@
-# coding-agent
+# hataraku
 
 基于 Anthropic Claude 的智能编码助手 CLI 工具，提供终端用户界面（TUI）和丰富的 AI 辅助编程功能。
 
@@ -47,7 +47,7 @@
 
 ```bash
 git clone <repository-url>
-cd coding-agent
+cd hataraku
 bun install
 ```
 
@@ -77,7 +77,7 @@ bun --hot src/index.ts
 ## 项目结构
 
 ```
-coding-agent/
+hataraku/
 ├── src/
 │   ├── index.ts           # 入口点
 │   ├── cli/               # CLI 引导

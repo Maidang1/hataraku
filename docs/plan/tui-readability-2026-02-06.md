@@ -5,10 +5,10 @@
 我建议将现有时间线改为“双栏聚焦”并采用“摘要优先”策略，保持 Codex 常见交互节奏：右侧主对话连续、左侧工具与系统状态结构化、底部输入始终可用、确认操作始终显眼。
 
 ### 现状分析（基于代码）
-1. 渲染链路是单列线性堆叠：`/Users/bytedance/codes/ai/coding-agent/src/render/index.tsx` + `/Users/bytedance/codes/ai/coding-agent/src/render/components/Timeline.tsx`。  
-2. 聊天消息默认全量展开，工具和确认事件是卡片/行混排，长会话时“关键状态”容易被冲掉：`/Users/bytedance/codes/ai/coding-agent/src/render/components/ChatBubble.tsx`、`/Users/bytedance/codes/ai/coding-agent/src/render/components/ToolCard.tsx`。  
-3. 输入/浏览模式用 `Esc` 切换，交互状态隐藏在状态栏文本里，认知成本高：`/Users/bytedance/codes/ai/coding-agent/src/render/components/StatusBar.tsx`。  
-4. 事件模型缺少“展示摘要/严重级别/耗时/最新状态聚合”字段，UI 只能直接渲染原始事件：`/Users/bytedance/codes/ai/coding-agent/src/render/state/events.ts`。
+1. 渲染链路是单列线性堆叠：`/Users/bytedance/codes/ai/hataraku/src/render/index.tsx` + `/Users/bytedance/codes/ai/hataraku/src/render/components/Timeline.tsx`。  
+2. 聊天消息默认全量展开，工具和确认事件是卡片/行混排，长会话时“关键状态”容易被冲掉：`/Users/bytedance/codes/ai/hataraku/src/render/components/ChatBubble.tsx`、`/Users/bytedance/codes/ai/hataraku/src/render/components/ToolCard.tsx`。  
+3. 输入/浏览模式用 `Esc` 切换，交互状态隐藏在状态栏文本里，认知成本高：`/Users/bytedance/codes/ai/hataraku/src/render/components/StatusBar.tsx`。  
+4. 事件模型缺少“展示摘要/严重级别/耗时/最新状态聚合”字段，UI 只能直接渲染原始事件：`/Users/bytedance/codes/ai/hataraku/src/render/state/events.ts`。
 
 ### 产品决策（已锁定）
 1. 布局：双栏聚焦。  
@@ -35,21 +35,21 @@
 8. 宽度适配：`<100` 列自动退化为单栏分页（先 conversation，按键切换 activity）。
 
 ### 需要修改的接口/类型（Public APIs / Interfaces）
-1. `UiMode`（`/Users/bytedance/codes/ai/coding-agent/src/render/state/events.ts`）调整为 `composer | activity | conversation`。  
+1. `UiMode`（`/Users/bytedance/codes/ai/hataraku/src/render/state/events.ts`）调整为 `composer | activity | conversation`。  
 2. `UiEvent` 扩展字段：`summary?: string`、`severity?: "info"|"warn"|"error"`、`startedAt?`、`endedAt?`、`pinned?`。  
 3. `addToolEvent/completeToolEvent` 增加耗时支持（通过 startedAt/endedAt 计算）。  
 4. `StatusBar` props 调整为包含焦点 pane、pending confirm 数、最近工具状态。  
 5. `Timeline` 拆分为 `ActivityPane` 和 `ConversationPane`（组件接口独立，避免互相耦合）。
 
 ### 实施步骤（文件级）
-1. 在 `/Users/bytedance/codes/ai/coding-agent/src/render/state/events.ts` 扩展事件模型与派生选择器（最新错误、pending confirm、active tools）。  
-2. 在 `/Users/bytedance/codes/ai/coding-agent/src/render/index.tsx` 重构主布局和键盘状态机（焦点切换、窄屏降级、banner 插槽）。  
-3. 新增 `/Users/bytedance/codes/ai/coding-agent/src/render/components/ActivityPane.tsx`，承接 Tool/Confirm/MCP/Error 的摘要列表与详情展开。  
-4. 新增 `/Users/bytedance/codes/ai/coding-agent/src/render/components/ConversationPane.tsx`，承接 chat 流、历史折叠和流式标记。  
-5. 调整 `/Users/bytedance/codes/ai/coding-agent/src/render/components/StatusBar.tsx` 为“状态摘要条”而非长提示文本。  
-6. 调整 `/Users/bytedance/codes/ai/coding-agent/src/render/components/ToolCard.tsx`、`/Users/bytedance/codes/ai/coding-agent/src/render/components/ConfirmCard.tsx` 为“摘要行 + 展开详情”双态组件。  
-7. 在 `/Users/bytedance/codes/ai/coding-agent/src/render/theme.ts` 增加语义色 token（focus/pending/error-muted/surface），统一对比度。  
-8. 在 `/Users/bytedance/codes/ai/coding-agent/src/render/commands/index.ts` 更新 `/help` 文案，匹配新键位。
+1. 在 `/Users/bytedance/codes/ai/hataraku/src/render/state/events.ts` 扩展事件模型与派生选择器（最新错误、pending confirm、active tools）。  
+2. 在 `/Users/bytedance/codes/ai/hataraku/src/render/index.tsx` 重构主布局和键盘状态机（焦点切换、窄屏降级、banner 插槽）。  
+3. 新增 `/Users/bytedance/codes/ai/hataraku/src/render/components/ActivityPane.tsx`，承接 Tool/Confirm/MCP/Error 的摘要列表与详情展开。  
+4. 新增 `/Users/bytedance/codes/ai/hataraku/src/render/components/ConversationPane.tsx`，承接 chat 流、历史折叠和流式标记。  
+5. 调整 `/Users/bytedance/codes/ai/hataraku/src/render/components/StatusBar.tsx` 为“状态摘要条”而非长提示文本。  
+6. 调整 `/Users/bytedance/codes/ai/hataraku/src/render/components/ToolCard.tsx`、`/Users/bytedance/codes/ai/hataraku/src/render/components/ConfirmCard.tsx` 为“摘要行 + 展开详情”双态组件。  
+7. 在 `/Users/bytedance/codes/ai/hataraku/src/render/theme.ts` 增加语义色 token（focus/pending/error-muted/surface），统一对比度。  
+8. 在 `/Users/bytedance/codes/ai/hataraku/src/render/commands/index.ts` 更新 `/help` 文案，匹配新键位。
 
 ### 测试与验收
 1. 类型检查：`bunx tsc -p tsconfig.json --noEmit` 必须通过。  

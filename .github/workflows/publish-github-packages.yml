@@ -1,0 +1,58 @@
+name: Publish GitHub Packages npm
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@${{ github.repository_owner }}"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate package name scope for GitHub Packages
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          EXPECTED_SCOPE="@${GITHUB_REPOSITORY_OWNER,,}/"
+          if [[ "$PACKAGE_NAME" != ${EXPECTED_SCOPE}* ]]; then
+            echo "package.json name must start with ${EXPECTED_SCOPE} for GitHub Packages"
+            echo "Current name: $PACKAGE_NAME"
+            exit 1
+          fi
+
+      - name: Validate tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+
+      - name: Publish to GitHub Packages npm registry
+        run: npm publish --registry https://npm.pkg.github.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

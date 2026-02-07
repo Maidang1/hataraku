@@ -18,7 +18,7 @@ export function exportSessionToMarkdown(options: ExportOptions): void {
   const changesJson = readFileIfExists(path.join(sessionDir, "changes.json"));
 
   const lines: string[] = [];
-  lines.push("# Coding Agent Session Export");
+  lines.push("# Hataraku Session Export");
   lines.push("");
   lines.push(`- Session dir: ${sessionDir}`);
   lines.push("");
