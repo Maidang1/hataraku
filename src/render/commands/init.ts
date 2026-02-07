@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { Agent } from "../../core/agent";
+import type { Agent } from "../../core/api/agent";
 
 export function buildClaudeMdTemplate(params: { projectName: string }): string {
   return `# CLAUDE.md
@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - \`src/index.ts\` - Entry
 - \`src/cli/\` - CLI bootstrap (Ink render + wiring)
 - \`src/render/\` - Ink UI components and Jotai state
-- \`src/core/\` - Core logic (agent, tools, MCP, skills, config, safety, logging)
+- \`src/core/\` - SDK layer (\`api/\` public surface, \`internal/\` implementation)
 `;
 }
 
@@ -36,11 +36,10 @@ export async function ensureClaudeMd(agent: Agent): Promise<{ ok: boolean; messa
   const projectName = path.basename(process.cwd());
   const content = buildClaudeMdTemplate({ projectName });
   const result = await agent.runTool({
-    toolName: "fs_write",
-    input: { path: ".claude/CLAUDE.md", content },
+    toolName: "fileEdit",
+    input: { filePath: ".claude/CLAUDE.md", old_string: "", new_string: content },
     preview: `Write file: .claude/CLAUDE.md (${content.length} chars)`,
   });
 
   return { ok: !result.content.startsWith("Error:"), message: result.content };
 }
-

@@ -4,13 +4,16 @@
 
 - `src/cli/` - CLI entry layer that renders the Ink app
 - `src/render/` - UI layer with Ink components and Jotai state
-- `src/core/` - Business logic layer
-  - `agent/` - Streams Anthropic responses, tool calls, MCP integration
-  - `config/` - Loads Claude settings with local > project > user priority
-  - `tools/` - Tool base class and built-in Bash tool
-  - `mcp/` - MCP server integration and tool wrapping
-  - `skills/` - Skill loader/manager for extensible skill modules
-  - `utils/` - Shared helpers
+- `src/core/` - SDK layer (designed for standalone package publishing)
+  - `api/` - Stable public exports used by CLI/UI
+  - `internal/sdk/` - Agent runtime implementation (agent/runtime/types)
+  - `internal/providers/` - LLM provider adapters
+  - `internal/tools/` - Tool base/builtins/registry
+  - `internal/integrations/` - MCP and skills integrations
+  - `internal/config/` - Settings loading and schema
+  - `internal/observability/` - Logging and export
+  - `internal/policy/` - Safety policy
+  - `internal/shared/` - Cross-layer helpers
 
 ## Architectural Patterns
 

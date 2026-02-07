@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { render } from "ink";
 import { App } from "../render/index";
-import { exportSessionToMarkdown } from "../core/logging";
+import { exportSessionToMarkdown } from "../core/api/observability";
 import cac, { type CAC } from "cac";
 
 const CONFIG = {

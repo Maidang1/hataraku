@@ -20,12 +20,6 @@ export function ConfirmSelectMenu(props: {
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
-      borderTop={false}
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      borderColor={COLORS.warning}
       marginBottom={0}
       paddingY={0}
     >

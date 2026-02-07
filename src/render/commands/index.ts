@@ -1,5 +1,5 @@
-import type { Agent } from "../../core/agent";
-import { getEffectiveConfig } from "../../core/config";
+import type { Agent } from "../../core/api/agent";
+import { getEffectiveConfig } from "../../core/api/config";
 import { addChatEvent, clearEvents } from "../state/events";
 import { ensureClaudeMd } from "./init";
 

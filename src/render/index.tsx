@@ -3,8 +3,8 @@ import { Box, Text, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
 import { Provider, useAtomValue } from "jotai";
 import * as os from "os";
-import { Agent } from "../core/agent";
-import { getEffectiveConfig } from "../core/config";
+import { Agent } from "../core/api/agent";
+import { getEffectiveConfig } from "../core/api/config";
 import { EventTimeline } from "./components/EventTimeline";
 import { ConfirmSelectMenu, type ConfirmSelectOption } from "./components/ConfirmSelectMenu";
 import { SlashCommandMenu } from "./components/SlashCommandMenu";
@@ -12,7 +12,7 @@ import { StatusBar } from "./components/StatusBar";
 import { Spinner } from "./components/Spinner";
 import { runSlashCommand, SLASH_COMMANDS } from "./commands";
 import { historyAtom } from "./state/history";
-import { loadingAtom } from "./state/loading";
+import { loadingAtom, setLoading } from "./state/loading";
 import { globalStore } from "./state/store";
 import { COLORS } from "./theme";
 import {
@@ -34,7 +34,12 @@ import {
 } from "./state/events";
 
 const { model } = getEffectiveConfig();
-const agent = new Agent({ model });
+const agent = new Agent({
+  model,
+  hooks: {
+    onLoadingChange: (isLoading: boolean) => setLoading(isLoading),
+  },
+});
 
 function toDisplayCwd(cwd: string): string {
   const home = os.homedir();
@@ -98,6 +103,7 @@ function App(): React.JSX.Element {
   const thinkingEventIdRef = useRef<string | null>(null);
   const terminalColumns = stdout?.columns ?? 120;
   const terminalRows = stdout?.rows ?? 40;
+  const separatorLine = "─".repeat(Math.max(8, terminalColumns - 2));
 
   const pendingConfirms = useMemo(() => getPendingConfirmCount(events), [events]);
   const activeTools = useMemo(() => getActiveToolCount(events), [events]);
@@ -168,7 +174,6 @@ function App(): React.JSX.Element {
 
     const handleAssistantEnd = () => {
       assistantEventIdRef.current = null;
-      globalStore.set(loadingAtom, false);
     };
 
     const handleAssistantThinkingStart = (message: { role: "thinking"; content: string; redacted?: boolean }) => {
@@ -385,11 +390,11 @@ function App(): React.JSX.Element {
           />
         )}
 
-        {/* Thinking indicator */}
+        {/* Loading indicator */}
         {isModelThinking && !confirm && (
           <Box marginBottom={1}>
             <Text color={COLORS.accent}>
-              <Spinner /> thinking
+              <Spinner /> loading
             </Text>
           </Box>
         )}
@@ -415,16 +420,8 @@ function App(): React.JSX.Element {
           )}
         </Box>
 
-        <Box
-          borderStyle="single"
-          borderTop
-          borderBottom={false}
-          borderLeft={false}
-          borderRight={false}
-          borderColor={COLORS.border}
-          paddingTop={0}
-          marginTop={events.length > 0 ? 0 : 1}
-        >
+        <Box flexDirection="column" marginTop={events.length > 0 ? 0 : 1}>
+          <Text color={COLORS.border}>{separatorLine}</Text>
           <Box>
             <Text color={COLORS.accent} bold>❯ </Text>
             <TextInput

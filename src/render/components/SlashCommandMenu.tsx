@@ -30,12 +30,6 @@ export function SlashCommandMenu(props: {
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
-      borderTop={false}
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      borderColor={COLORS.border}
       marginBottom={0}
       paddingY={0}
     >

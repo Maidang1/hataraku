@@ -4,16 +4,16 @@
  * 测试 MCP 连接管理和 Skills 依赖管理功能
  */
 
-import { ConnectionManager } from "./src/core/mcp/connection-manager";
-import { McpToolCache } from "./src/core/mcp/tool-cache";
-import { RetryStrategy } from "./src/core/mcp/retry-strategy";
-import { HealthChecker } from "./src/core/mcp/health-checker";
-import { DependencyResolver } from "./src/core/skills/dependency/resolver";
-import { ConflictDetector } from "./src/core/skills/dependency/conflict-detector";
-import { DependencyGraphBuilder } from "./src/core/skills/dependency/graph";
-import { McpDependencyLoader } from "./src/core/skills/integration/mcp-loader";
-import { LifecycleManager } from "./src/core/skills/integration/lifecycle";
-import { ToolMapper } from "./src/core/skills/integration/tool-mapper";
+import { ConnectionManager } from "./src/core/internal/integrations/mcp/connection-manager";
+import { McpToolCache } from "./src/core/internal/integrations/mcp/tool-cache";
+import { RetryStrategy } from "./src/core/internal/integrations/mcp/retry-strategy";
+import { HealthChecker } from "./src/core/internal/integrations/mcp/health-checker";
+import { DependencyResolver } from "./src/core/internal/integrations/skills/dependency/resolver";
+import { ConflictDetector } from "./src/core/internal/integrations/skills/dependency/conflict-detector";
+import { DependencyGraphBuilder } from "./src/core/internal/integrations/skills/dependency/graph";
+import { McpDependencyLoader } from "./src/core/internal/integrations/skills/integration/mcp-loader";
+import { LifecycleManager } from "./src/core/internal/integrations/skills/integration/lifecycle";
+import { ToolMapper } from "./src/core/internal/integrations/skills/integration/tool-mapper";
 
 console.log("🧪 开始端到端测试...\n");
 

@@ -25,54 +25,47 @@ export function StatusBar(props: {
 
   const isCompact = terminalColumns < 100;
   const isMinimal = terminalColumns < 72;
+  const separatorLine = "─".repeat(Math.max(8, terminalColumns - 2));
 
   return (
-    <Box
-      flexDirection="row"
-      justifyContent="space-between"
-      borderStyle="single"
-      borderTop
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      borderColor={COLORS.border}
-      paddingTop={0}
-      marginTop={0}
-    >
-      <Box>
-        <Text color={COLORS.accent} bold>
-          {model}
-        </Text>
-        {!isCompact && <Text color={COLORS.dim}> | {cwd}</Text>}
-      </Box>
+    <Box flexDirection="column" marginTop={0}>
+      <Text color={COLORS.border}>{separatorLine}</Text>
+      <Box flexDirection="row" justifyContent="space-between">
+        <Box>
+          <Text color={COLORS.accent} bold>
+            {model}
+          </Text>
+          {!isCompact && <Text color={COLORS.dim}> | {cwd}</Text>}
+        </Box>
 
-      <Box>
-        <Text color={COLORS.dim}>thinking mode </Text>
-        <Text color={thinkingModeEnabled ? COLORS.success : COLORS.muted} bold>
-          {thinkingModeEnabled ? "on" : "off"}
-        </Text>
-        {!isMinimal && <Text color={COLORS.muted}> (Shift+Tab)</Text>}
+        <Box>
+          <Text color={COLORS.dim}>thinking mode </Text>
+          <Text color={thinkingModeEnabled ? COLORS.success : COLORS.muted} bold>
+            {thinkingModeEnabled ? "on" : "off"}
+          </Text>
+          {!isMinimal && <Text color={COLORS.muted}> (Shift+Tab)</Text>}
 
-        <Text color={COLORS.muted}> · </Text>
-        <Text color={thinking ? COLORS.pending : COLORS.dim}>
-          ⚡ {thinking ? "thinking" : "idle"}
-        </Text>
+          <Text color={COLORS.muted}> · </Text>
+          <Text color={thinking ? COLORS.pending : COLORS.dim}>
+            ⚡ {thinking ? "loading" : "idle"}
+          </Text>
 
-        <Text color={COLORS.muted}> · </Text>
-        <Text color={activeTools > 0 ? COLORS.accent : COLORS.dim}>🔧 {activeTools}</Text>
-        {!isMinimal && activeTools > 0 && latestTool && (
-          <Text color={COLORS.muted}> {latestTool}</Text>
-        )}
+          <Text color={COLORS.muted}> · </Text>
+          <Text color={activeTools > 0 ? COLORS.accent : COLORS.dim}>🔧 {activeTools}</Text>
+          {!isMinimal && activeTools > 0 && latestTool && (
+            <Text color={COLORS.muted}> {latestTool}</Text>
+          )}
 
-        <Text color={COLORS.muted}> · </Text>
-        <Text color={pendingConfirms > 0 ? COLORS.warning : COLORS.dim}>
-          ⚠ {pendingConfirms}
-        </Text>
+          <Text color={COLORS.muted}> · </Text>
+          <Text color={pendingConfirms > 0 ? COLORS.warning : COLORS.dim}>
+            ⚠ {pendingConfirms}
+          </Text>
 
-        <Text color={COLORS.muted}> · </Text>
-        <Text dimColor color={COLORS.dim}>
-          {isMinimal ? "/help" : "/help for commands"}
-        </Text>
+          <Text color={COLORS.muted}> · </Text>
+          <Text dimColor color={COLORS.dim}>
+            {isMinimal ? "/help" : "/help for commands"}
+          </Text>
+        </Box>
       </Box>
     </Box>
   );
