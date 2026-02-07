@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { VirtualList } from "ink-virtual-list";
 import type { SlashCommandMeta } from "../commands";
 import { COLORS } from "../theme";
 
@@ -38,31 +39,37 @@ export function SlashCommandMenu(props: {
           slash commands{needle ? ` matching "${needle}"` : ""}
         </Text>
       </Box>
-      {commands.map((command, index) => {
-        const isSelected = index === selectedIndex;
-        const usage = command.usage ? ` ${command.usage}` : "";
-        const nameText = truncateText(`/${command.name}${usage}`, nameWidth);
-        const descriptionText = truncateText(command.description, descriptionWidth);
+      <VirtualList
+        items={commands}
+        selectedIndex={selectedIndex}
+        height="auto"
+        reservedLines={1} // Reserve space for the header
+        keyExtractor={(command) => command.name}
+        renderItem={({ item, index, isSelected }) => {
+          const usage = item.usage ? ` ${item.usage}` : "";
+          const nameText = truncateText(`/${item.name}${usage}`, nameWidth);
+          const descriptionText = truncateText(item.description, descriptionWidth);
 
-        return (
-          <Box key={command.name} paddingX={1}>
-            <Text
-              color={isSelected ? COLORS.focus : COLORS.textSoft}
-              backgroundColor={isSelected ? COLORS.bgSelected : undefined}
-            >
-              {isSelected ? "› " : "  "}
-              {nameText.padEnd(nameWidth)}
-            </Text>
-            <Text
-              color={isSelected ? COLORS.text : COLORS.muted}
-              backgroundColor={isSelected ? COLORS.bgSelected : undefined}
-            >
-              {" "}
-              {descriptionText}
-            </Text>
-          </Box>
-        );
-      })}
+          return (
+            <Box key={item.name} paddingX={1}>
+              <Text
+                color={isSelected ? COLORS.focus : COLORS.textSoft}
+                backgroundColor={isSelected ? COLORS.bgSelected : undefined}
+              >
+                {isSelected ? "› " : "  "}
+                {nameText.padEnd(nameWidth)}
+              </Text>
+              <Text
+                color={isSelected ? COLORS.text : COLORS.muted}
+                backgroundColor={isSelected ? COLORS.bgSelected : undefined}
+              >
+                {" "}
+                {descriptionText}
+              </Text>
+            </Box>
+          );
+        }}
+      />
     </Box>
   );
 }

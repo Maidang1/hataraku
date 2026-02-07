@@ -96,7 +96,7 @@ export function createTimeoutPromise(ms: number, message: string): Promise<never
  * MCP 模块常量
  */
 export const MCP_CONSTANTS = {
-  DEFAULT_CLIENT_NAME: "coding-agent",
+  DEFAULT_CLIENT_NAME: "hataraku",
   DEFAULT_CLIENT_VERSION: "1.0.0",
   DEFAULT_STARTUP_TIMEOUT_SEC: 30,
   DEFAULT_TOOL_TIMEOUT_SEC: 60,

@@ -21,4 +21,6 @@ export type SafetyPolicyConfig = {
   projectRoot: string;
   allowedWriteRoots?: string[];
   autoAllowedBashPrefixes?: string[];
+  autoAllowedTools?: string[];
+  bypassAll?: boolean;
 };

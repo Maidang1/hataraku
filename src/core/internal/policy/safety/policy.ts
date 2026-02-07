@@ -16,16 +16,42 @@ function getBashPrefix(command: string): string {
 
 export class SafetyPolicy {
   private config: SafetyPolicyConfig;
+  private runtimeAutoAllowedTools: Set<string> = new Set();
 
   constructor(config: SafetyPolicyConfig) {
     this.config = config;
+    // Initialize with tools from config
+    if (config.autoAllowedTools) {
+      config.autoAllowedTools.forEach(tool => this.runtimeAutoAllowedTools.add(tool));
+    }
+  }
+
+  /**
+   * Add a tool to the runtime auto-allowed list.
+   * This affects the current session immediately.
+   */
+  addAutoAllowedTool(toolName: string): void {
+    this.runtimeAutoAllowedTools.add(toolName);
+  }
+
+  /**
+   * Check if a tool is in the auto-allowed list.
+   */
+  isAutoAllowed(toolName: string): boolean {
+    return this.runtimeAutoAllowedTools.has(toolName);
   }
 
   decide(action: SafetyAction): SafetyDecision {
+    // YOLO mode: bypass all safety checks
+    if (this.config.bypassAll) {
+      return { allowed: true, requiresConfirm: false, reason: "YOLO mode: all permissions granted" };
+    }
+
     const projectRoot = this.config.projectRoot;
     const allowedWriteRoots = this.config.allowedWriteRoots?.length
       ? this.config.allowedWriteRoots
       : [projectRoot];
+    const autoAllowedTools = this.config.autoAllowedTools ?? [];
 
     if (action.type === "bash") {
       const prefix = getBashPrefix(action.command);
@@ -48,6 +74,12 @@ export class SafetyPolicy {
 
     if (action.type === "tool") {
       const toolName = action.toolName;
+
+      // Check if tool is in runtime auto-allowed list (updated during session)
+      if (this.runtimeAutoAllowedTools.has(toolName)) {
+        return { allowed: true, requiresConfirm: false, reason: `Auto-allowed tool: ${toolName}` };
+      }
+
       if (
         toolName === "fileRead" ||
         toolName === "listFiles" ||

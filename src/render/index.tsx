@@ -34,12 +34,6 @@ import {
 } from "./state/events";
 
 const { model } = getEffectiveConfig();
-const agent = new Agent({
-  model,
-  hooks: {
-    onLoadingChange: (isLoading: boolean) => setLoading(isLoading),
-  },
-});
 
 function toDisplayCwd(cwd: string): string {
   const home = os.homedir();
@@ -49,15 +43,21 @@ function toDisplayCwd(cwd: string): string {
   return cwd;
 }
 
-function HeaderCard(props: { modelLabel: string; showTip: boolean }): React.JSX.Element {
+function HeaderCard(props: { modelLabel: string; showTip: boolean; yoloMode: boolean }): React.JSX.Element {
   const cwd = toDisplayCwd(process.cwd());
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box borderStyle="single" borderColor={COLORS.border} paddingX={2} paddingY={0}>
         <Text color={COLORS.brand} bold>
-          &gt;_ Coding Agent
+          &gt;_ Hataraku
         </Text>
         <Text color={COLORS.muted}>  v1.0.0</Text>
+        {props.yoloMode && (
+          <>
+            <Text color={COLORS.muted}>  ·  </Text>
+            <Text color="#ff6b6b" bold>YOLO MODE</Text>
+          </>
+        )}
       </Box>
       <Box marginTop={0}>
         <Text color={COLORS.muted}>model </Text>
@@ -71,7 +71,7 @@ function HeaderCard(props: { modelLabel: string; showTip: boolean }): React.JSX.
       {props.showTip && (
         <Box marginTop={0}>
           <Text color={COLORS.muted}>
-            Tip: <Text color={COLORS.text}>Shift+Tab</Text> thinking mode • <Text color={COLORS.text}>Ctrl+C</Text> interrupt
+            Tip: <Text color={COLORS.text}>Shift+Tab</Text> thinking mode • <Text color={COLORS.text}>Esc</Text> stop loop • <Text color={COLORS.text}>Ctrl+C</Text> exit
           </Text>
         </Box>
       )}
@@ -81,10 +81,25 @@ function HeaderCard(props: { modelLabel: string; showTip: boolean }): React.JSX.
 
 // ── Main App ──
 
-function App(): React.JSX.Element {
+interface AppProps {
+  yolo?: boolean;
+}
+
+function App({ yolo = false }: AppProps): React.JSX.Element {
   const history = useAtomValue(historyAtom, { store: globalStore });
   const events = useAtomValue(eventsAtom, { store: globalStore });
   const loading = useAtomValue(loadingAtom, { store: globalStore });
+
+  // Create agent with yolo setting
+  const agent = useMemo(() => {
+    return new Agent({
+      model,
+      yolo,
+      hooks: {
+        onLoadingChange: (isLoading: boolean) => setLoading(isLoading),
+      },
+    });
+  }, [yolo]);
 
   const [query, setQuery] = useState("");
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -104,6 +119,8 @@ function App(): React.JSX.Element {
   const terminalColumns = stdout?.columns ?? 120;
   const terminalRows = stdout?.rows ?? 40;
   const separatorLine = "─".repeat(Math.max(8, terminalColumns - 2));
+
+  const [tokenUsage, setTokenUsage] = useState({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
 
   const pendingConfirms = useMemo(() => getPendingConfirmCount(events), [events]);
   const activeTools = useMemo(() => getActiveToolCount(events), [events]);
@@ -130,6 +147,7 @@ function App(): React.JSX.Element {
   const confirmOptions: ConfirmSelectOption[] = useMemo(
     () => [
       { key: "allow", label: "Allow", description: "run this request once" },
+      { key: "allowAlways", label: "Always allow", description: "auto-allow this tool for all future requests" },
       { key: "deny", label: "Deny", description: "cancel this request" },
     ],
     [],
@@ -217,6 +235,10 @@ function App(): React.JSX.Element {
     };
     const handleMcpCacheHit = (serverName: string) => addMcpEvent(`Cache hit: ${serverName}`, "info");
 
+    const handleTokenUsage = (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => {
+      setTokenUsage(usage);
+    };
+
     const handleError = (error: Error) => addErrorEvent({ message: error.message, stack: error.stack });
 
     agent.on("userMessage", handleUserMessage);
@@ -229,6 +251,7 @@ function App(): React.JSX.Element {
     agent.on("toolUse", handleToolUse);
     agent.on("toolResult", handleToolResult);
     agent.on("confirmRequest", handleConfirmRequest);
+    agent.on("tokenUsage", handleTokenUsage);
     agent.on("mcpServerConnectStart", handleMcpConnectStart);
     agent.on("mcpServerConnectSuccess", handleMcpConnectSuccess);
     agent.on("mcpServerConnectError", handleMcpConnectError);
@@ -248,6 +271,7 @@ function App(): React.JSX.Element {
       agent.off("toolUse", handleToolUse);
       agent.off("toolResult", handleToolResult);
       agent.off("confirmRequest", handleConfirmRequest);
+      agent.off("tokenUsage", handleTokenUsage);
       agent.off("mcpServerConnectStart", handleMcpConnectStart);
       agent.off("mcpServerConnectSuccess", handleMcpConnectSuccess);
       agent.off("mcpServerConnectError", handleMcpConnectError);
@@ -258,7 +282,17 @@ function App(): React.JSX.Element {
     };
   }, []);
 
-  const handleConfirmAllow = (confirmId: string) => {
+  const handleConfirmAllow = (confirmId: string, toolName: string) => {
+    agent.confirmResponse(confirmId, true);
+    resolveConfirmEvent({ confirmId, allowed: true });
+    setConfirm(null);
+    setConfirmSelectedIndex(1);
+  };
+
+  const handleConfirmAllowAlways = (confirmId: string, toolName: string) => {
+    // Add tool to auto-allowed list (updates runtime safety policy immediately)
+    agent.addAutoAllowedTool(toolName);
+    // Then allow the current request
     agent.confirmResponse(confirmId, true);
     resolveConfirmEvent({ confirmId, allowed: true });
     setConfirm(null);
@@ -286,7 +320,11 @@ function App(): React.JSX.Element {
       if (key.return) {
         const selected = confirmOptions[confirmSelectedIndex]?.key ?? "deny";
         if (selected === "allow") {
-          handleConfirmAllow(confirm.id);
+          handleConfirmAllow(confirm.id, confirm.toolName);
+          return;
+        }
+        if (selected === "allowAlways") {
+          handleConfirmAllowAlways(confirm.id, confirm.toolName);
           return;
         }
         handleConfirmDeny(confirm.id);
@@ -305,8 +343,14 @@ function App(): React.JSX.Element {
       return;
     }
 
-    // Esc: toggle expand on latest tool event (quick inspect)
+    // Esc: stop current loop or toggle expand on latest tool event
     if (key.escape) {
+      // If agent is loading, stop the current loop
+      if (loading) {
+        agent.stop();
+        return;
+      }
+      // Otherwise toggle expand on latest tool event (quick inspect)
       if (latestTool) {
         toggleExpanded(latestTool.id);
       }
@@ -379,7 +423,7 @@ function App(): React.JSX.Element {
   return (
     <Provider store={globalStore}>
       <Box flexDirection="column" paddingX={0}>
-        <HeaderCard modelLabel={modelLabel} showTip={showWelcome} />
+        <HeaderCard modelLabel={modelLabel} showTip={showWelcome} yoloMode={yolo} />
 
         {/* Streaming timeline — all events in chronological order */}
         {events.length > 0 && (
@@ -457,6 +501,7 @@ function App(): React.JSX.Element {
           latestTool={latestTool?.toolName ?? ""}
           thinking={isModelThinking}
           thinkingModeEnabled={thinkingMode.enabled}
+          tokenUsage={tokenUsage}
         />
       </Box>
     </Provider>

@@ -6,6 +6,7 @@ export type ClaudeSettings = {
   safety?: {
     allowedWriteRoots?: string[];
     autoAllowedBashPrefixes?: string[];
+    autoAllowedTools?: string[];
   };
   logging?: {
     baseDir?: string;

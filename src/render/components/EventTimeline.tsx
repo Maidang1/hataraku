@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { VirtualList } from "ink-virtual-list";
 import type { UiEvent } from "../state/events";
 import { TimelineEvent } from "./TimelineEvent";
 import { COLORS } from "../theme";
@@ -18,13 +19,18 @@ export function EventTimeline(props: {
           <Text color={COLORS.dim}>… {hiddenEventCount} earlier events hidden</Text>
         </Box>
       )}
-      {events.map((event) => (
-        <TimelineEvent
-          key={event.id}
-          event={event}
-          activeConfirmId={activeConfirmId}
-        />
-      ))}
+      <VirtualList
+        items={events}
+        height="auto"
+        reservedLines={hiddenEventCount > 0 ? 1 : 0}
+        keyExtractor={(event) => event.id}
+        renderItem={({ item }) => (
+          <TimelineEvent
+            event={item}
+            activeConfirmId={activeConfirmId}
+          />
+        )}
+      />
     </Box>
   );
 }

@@ -1,7 +1,10 @@
 {
-  "name": "coding-agent",
-  "version": "1.0.0",
+  "name": "@maidang1/hataraku",
+  "version": "0.0.3",
   "module": "src/index.ts",
+  "bin": {
+    "hataraku": "./src/index.ts"
+  },
   "type": "module",
   "private": false,
   "scripts": {

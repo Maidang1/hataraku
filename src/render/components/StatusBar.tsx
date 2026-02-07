@@ -11,6 +11,7 @@ export function StatusBar(props: {
   latestTool: string;
   thinking: boolean;
   thinkingModeEnabled: boolean;
+  tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number };
 }): React.JSX.Element {
   const {
     model,
@@ -21,11 +22,21 @@ export function StatusBar(props: {
     latestTool,
     thinking,
     thinkingModeEnabled,
+    tokenUsage,
   } = props;
 
   const isCompact = terminalColumns < 100;
   const isMinimal = terminalColumns < 72;
   const separatorLine = "─".repeat(Math.max(8, terminalColumns - 2));
+
+  // Format token count for display
+  const formatTokens = (count: number): string => {
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count.toString();
+  };
+
+  const hasTokenUsage = tokenUsage.totalTokens > 0;
 
   return (
     <Box flexDirection="column" marginTop={0}>
@@ -52,6 +63,15 @@ export function StatusBar(props: {
 
           <Text color={COLORS.muted}> · </Text>
           <Text color={activeTools > 0 ? COLORS.accent : COLORS.dim}>🔧 {activeTools}</Text>
+
+          {hasTokenUsage && !isMinimal && (
+            <>
+              <Text color={COLORS.muted}> · </Text>
+              <Text color={COLORS.dim} dimColor>
+                📊 {formatTokens(tokenUsage.totalTokens)}
+              </Text>
+            </>
+          )}
           {!isMinimal && activeTools > 0 && latestTool && (
             <Text color={COLORS.muted}> {latestTool}</Text>
           )}

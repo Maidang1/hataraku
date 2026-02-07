@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import { COLORS } from "../theme";
 
 export type ConfirmSelectOption = {
-  key: "allow" | "deny";
+  key: "allow" | "deny" | "allowAlways";
   label: string;
   description: string;
 };
@@ -30,7 +30,7 @@ export function ConfirmSelectMenu(props: {
       </Box>
       {options.map((option, index) => {
         const isSelected = index === selectedIndex;
-        const color = option.key === "allow" ? COLORS.success : COLORS.danger;
+        const color = (option.key === "allow" || option.key === "allowAlways") ? COLORS.success : COLORS.danger;
         return (
           <Box key={option.key} paddingX={1}>
             <Text color={isSelected ? COLORS.focus : COLORS.muted} backgroundColor={isSelected ? COLORS.bgSelected : undefined}>

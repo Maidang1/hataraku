@@ -6,7 +6,7 @@ import { exportSessionToMarkdown } from "../core/api/observability";
 import cac, { type CAC } from "cac";
 
 const CONFIG = {
-  SESSION_DIR: ".coding-agent/sessions",
+  SESSION_DIR: ".hataraku/sessions",
   DEFAULT_OUTPUT_PATTERN: "session-{id}.md",
   VERSION: "1.0.0",
 } as const;
@@ -15,11 +15,7 @@ const CONFIG = {
  * Gets the display name for the CLI based on the binary name
  */
 function getDisplayName(argv: string[]): string {
-  const maybeBin = argv[1];
-  if (!maybeBin) return "coding-agent";
-
-  const base = path.basename(maybeBin);
-  return base === "agent" || base === "coding-agent" ? base : "coding-agent";
+  return "hataraku";
 }
 
 /**
@@ -73,8 +69,9 @@ function setupCli(cli: CAC): void {
       process.exitCode = await handleExportCommand(id, options);
     });
 
-  cli.command("[...args]", "Start TUI").action(() => {
-    render(<App />);
+  cli.command("[...args]", "Start TUI").action((_, options) => {
+    const yolo = Boolean(options.yolo);
+    render(<App yolo={yolo} />);
   });
 }
 
@@ -84,6 +81,9 @@ function setupCli(cli: CAC): void {
 export async function main(argv = process.argv): Promise<void> {
   const displayName = getDisplayName(argv);
   const cli = cac(displayName);
+
+  // Global options
+  cli.option('--yolo', 'Enable all permissions (disable confirmation and safety checks)');
 
   setupCli(cli);
   cli.help();

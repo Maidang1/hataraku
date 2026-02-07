@@ -95,3 +95,51 @@ export function getEffectiveConfig(): EffectiveConfig {
   };
   return cachedConfig;
 }
+
+/**
+ * Save settings to the project-local .claude/settings.json file.
+ * Creates the file and directory if they don't exist.
+ */
+export function saveConfig(settings: ClaudeSettings): void {
+  const cwd = process.cwd();
+  const projectSettingsPath = path.join(cwd, ".claude", "settings.json");
+
+  // Ensure .claude directory exists
+  const claudeDir = path.join(cwd, ".claude");
+  if (!fs.existsSync(claudeDir)) {
+    fs.mkdirSync(claudeDir, { recursive: true, mode: 0o755 });
+  }
+
+  // Read existing settings to merge
+  const existingSettings = readSettingsFile(projectSettingsPath) ?? {};
+  const mergedSettings = mergeSettings(existingSettings, settings);
+
+  // Write merged settings
+  fs.writeFileSync(projectSettingsPath, JSON.stringify(mergedSettings, null, 2), "utf-8");
+
+  // Reset cache so next getEffectiveConfig will reload
+  resetEffectiveConfigCache();
+}
+
+/**
+ * Add a tool name to the auto-allowed tools list in the project config.
+ */
+export function addAutoAllowedTool(toolName: string): void {
+  const cwd = process.cwd();
+  const { settings } = loadClaudeSettings(cwd);
+
+  const autoAllowedTools = settings.safety?.autoAllowedTools ?? [];
+  if (!autoAllowedTools.includes(toolName)) {
+    const newAutoAllowedTools = [...autoAllowedTools, toolName];
+    const updatedSettings: ClaudeSettings = {
+      safety: {
+        ...settings.safety,
+        autoAllowedTools: newAutoAllowedTools,
+        // Preserve other safety settings
+        allowedWriteRoots: settings.safety?.allowedWriteRoots,
+        autoAllowedBashPrefixes: settings.safety?.autoAllowedBashPrefixes,
+      },
+    };
+    saveConfig(updatedSettings);
+  }
+}

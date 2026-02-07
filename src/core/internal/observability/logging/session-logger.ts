@@ -15,7 +15,7 @@ export class SessionLogger {
   constructor(params: { sessionId: string; projectRoot: string; baseDir?: string }) {
     this.sessionId = params.sessionId;
     this.projectRoot = params.projectRoot;
-    const baseDir = params.baseDir ?? path.join(this.projectRoot, ".coding-agent", "sessions");
+    const baseDir = params.baseDir ?? path.join(this.projectRoot, ".hataraku", "sessions");
     this.sessionDir = path.join(baseDir, this.sessionId);
     fs.mkdirSync(this.sessionDir, { recursive: true });
     this.sessionLogPath = path.join(this.sessionDir, "session.jsonl");

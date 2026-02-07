@@ -103,6 +103,7 @@ export interface AgentEvents {
     reason: string;
     preview?: string;
   }) => void;
+  tokenUsage: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void;
   mcpServerConnectStart: (serverName: string) => void;
   mcpServerConnectSuccess: (serverName: string, toolCount: number) => void;
   mcpServerConnectError: (serverName: string, error: Error) => void;
@@ -138,6 +139,9 @@ class Agent extends EventEmitter {
   private thinkingEnabled = false;
   private thinkingBudgetTokens = 2048;
   private hooks: AgentRuntimeHooks;
+  private currentAbortController: AbortController | null = null;
+  private totalInputTokens = 0;
+  private totalOutputTokens = 0;
 
   constructor(params: {
     model: string;
@@ -145,8 +149,9 @@ class Agent extends EventEmitter {
     tools?: Map<string, Tool>;
     mcpServers?: Record<string, McpServerConfig>;
     hooks?: AgentRuntimeHooks;
+    yolo?: boolean;
   }) {
-    const { model, client, tools, mcpServers, hooks } = params;
+    const { model, client, tools, mcpServers, hooks, yolo = false } = params;
     super();
     this.model = model;
     const config = getEffectiveConfig();
@@ -174,6 +179,8 @@ class Agent extends EventEmitter {
       projectRoot: this.projectRoot,
       allowedWriteRoots,
       autoAllowedBashPrefixes: config.safety?.autoAllowedBashPrefixes,
+      autoAllowedTools: config.safety?.autoAllowedTools,
+      bypassAll: yolo,
     });
     this.logger = new SessionLogger({ sessionId: this.sessionId, projectRoot: this.projectRoot, baseDir });
     this.logger.writeJson("env.json", collectEnvSnapshot(this.projectRoot));
@@ -210,6 +217,33 @@ class Agent extends EventEmitter {
     resolver(allowed);
   }
 
+  /**
+   * Get the current token usage statistics.
+   */
+  getTokenUsage(): { inputTokens: number; outputTokens: number; totalTokens: number } {
+    return {
+      inputTokens: this.totalInputTokens,
+      outputTokens: this.totalOutputTokens,
+      totalTokens: this.totalInputTokens + this.totalOutputTokens,
+    };
+  }
+
+  /**
+   * Add a tool to the runtime auto-allowed list.
+   * This updates the safety policy for the current session immediately.
+   * It also persists the change to the config file for future sessions.
+   */
+  addAutoAllowedTool(toolName: string): void {
+    // Update runtime safety policy (immediate effect in current session)
+    this.safety.addAutoAllowedTool(toolName);
+
+    // Persist to config file (for future sessions)
+    // Note: This is async but we don't wait for it since the runtime update is sufficient
+    import("../../config/loader.js").then(({ addAutoAllowedTool }) => {
+      addAutoAllowedTool(toolName);
+    });
+  }
+
   getThinkingState(): { enabled: boolean; budgetTokens: number } {
     return {
       enabled: this.thinkingEnabled,
@@ -224,6 +258,13 @@ class Agent extends EventEmitter {
       this.thinkingBudgetTokens = budgetTokens;
     }
     return this.getThinkingState();
+  }
+
+  stop(): void {
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.logger.append({ type: "stop", ts: new Date().toISOString(), reason: "user_requested" });
+    }
   }
 
   private requestConfirmation(params: { toolName: string; reason: string; preview?: string }): Promise<boolean> {
@@ -493,6 +534,10 @@ class Agent extends EventEmitter {
       this.conversationHistory.push({ role: "user", content: input });
 
       let continueLoop = true;
+      this.currentAbortController = new AbortController();
+      const combinedSignal = signal ? 
+        AbortSignal.any([this.currentAbortController.signal, signal]) : 
+        this.currentAbortController.signal;
 
       while (continueLoop) {
         const thinking = this.thinkingEnabled
@@ -611,6 +656,23 @@ class Agent extends EventEmitter {
             }
           } else if (messageEvent.type === "message_delta") {
             stopReason = messageEvent.delta.stop_reason || null;
+
+            // Track token usage if provided
+            // @ts-ignore - Anthropic SDK types may not include usage in delta
+            const usage = messageEvent.delta.usage;
+            if (usage) {
+              const input_tokens = usage.input_tokens as number | undefined;
+              const output_tokens = usage.output_tokens as number | undefined;
+              if (input_tokens !== undefined) {
+                this.totalInputTokens += input_tokens;
+              }
+              if (output_tokens !== undefined) {
+                this.totalOutputTokens += output_tokens;
+              }
+
+              // Emit token usage event for UI updates
+              this.emit("tokenUsage", this.getTokenUsage());
+            }
           }
         }
         endThinking();
@@ -643,22 +705,24 @@ class Agent extends EventEmitter {
         });
 
         // 检查是否需要执行 tool
-        if (stopReason === "tool_use") {
-          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        const toolUseBlocks = currentContent.filter(
+          (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+        );
+        const shouldRunTools = toolUseBlocks.length > 0 || stopReason === "tool_use";
 
-          for (const block of currentContent) {
-            if (block.type === "tool_use") {
-              const toolUseId = block.id;
-              const toolName = block.name;
-              const toolInput = block.input;
-              // handled in batch path below
-            }
+        if (shouldRunTools) {
+          if (toolUseBlocks.length === 0) {
+            this.logger.append({
+              type: "error",
+              ts: new Date().toISOString(),
+              message: `Stop reason is tool_use but no tool blocks were returned (stopReason=${String(stopReason)})`,
+            });
+            continueLoop = false;
+            continue;
           }
 
-          const toolUseBlocks = currentContent.filter(
-            (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-          );
-          const batchResults = await this.executeToolBatch(toolUseBlocks, signal);
+          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+          const batchResults = await this.executeToolBatch(toolUseBlocks, combinedSignal);
           for (const item of batchResults) {
             toolResults.push({
               type: "tool_result",
@@ -684,6 +748,7 @@ class Agent extends EventEmitter {
       });
     } finally {
       this.hooks.onLoadingChange?.(false);
+      this.currentAbortController = null;
     }
   }
 }
