@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { DEFAULT_MODEL } from "./defaults";
+import { DEFAULT_MODEL, resolveContextSettings } from "./defaults";
 import type { ClaudeSettings, EffectiveConfig } from "./schema";
 
 let cachedConfig: EffectiveConfig | null = null;
@@ -28,6 +28,10 @@ function mergeSettings(base: ClaudeSettings, next: ClaudeSettings): ClaudeSettin
     mcpServers: {
       ...(base.mcpServers ?? {}),
       ...(next.mcpServers ?? {}),
+    },
+    context: {
+      ...(base.context ?? {}),
+      ...(next.context ?? {}),
     },
   };
 }
@@ -89,6 +93,7 @@ export function getEffectiveConfig(): EffectiveConfig {
     authToken,
     apiKey,
     mcpServers,
+    context: resolveContextSettings(model, settings.context),
     safety: settings.safety,
     logging: settings.logging,
     sources,

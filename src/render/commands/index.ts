@@ -7,6 +7,7 @@ export type SlashCommandContext = {
   agent: Agent;
   setModelLabel: (model: string) => void;
   setShowWelcome: (value: boolean) => void;
+  setTokenUsage: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void;
 };
 
 export type SlashCommandMeta = {
@@ -36,6 +37,14 @@ export const SLASH_COMMANDS: SlashCommandMeta[] = [
     description: "show session info",
   },
   {
+    name: "compact",
+    description: "compact context now",
+  },
+  {
+    name: "context",
+    description: "show context budget and usage",
+  },
+  {
     name: "init",
     description: "create CLAUDE.md",
   },
@@ -57,8 +66,11 @@ const handlers: Record<string, SlashCommandHandler> = {
     addChatEvent({ role: "system", content: HELP_TEXT });
   },
   clear: (ctx) => {
+    ctx.agent.resetConversation();
     clearEvents();
+    ctx.setTokenUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     ctx.setShowWelcome(true);
+    addChatEvent({ role: "system", content: "Conversation and model context cleared." });
   },
   model: (ctx, args) => {
     const next = args.join(" ").trim();
@@ -81,6 +93,38 @@ const handlers: Record<string, SlashCommandHandler> = {
         `model: ${ctx.agent.model}`,
         `mcpServers: ${mcpCount}`,
         `config sources:\n- ${sources}`,
+      ].join("\n"),
+    });
+  },
+  compact: async (ctx) => {
+    const result = await ctx.agent.compactNow({ reason: "manual" });
+    if (!result.compacted) {
+      addChatEvent({
+        role: "system",
+        content: `No compaction performed (tokens ${result.beforeTokens} -> ${result.afterTokens}).`,
+      });
+      return;
+    }
+    addChatEvent({
+      role: "system",
+      content: [
+        `Context compacted: ${result.beforeTokens} -> ${result.afterTokens} tokens`,
+        `Estimated counts: before=${result.estimatedBeforeTokens}, after=${result.estimatedAfterTokens}`,
+      ].join("\n"),
+    });
+  },
+  context: async (ctx) => {
+    const state = await ctx.agent.getContextState();
+    addChatEvent({
+      role: "system",
+      content: [
+        `context window: ${state.modelContextWindowTokens}`,
+        `auto compact limit: ${state.modelAutoCompactTokenLimit}`,
+        `auto compact enabled: ${state.enableAutoCompact}`,
+        `current input tokens: ${state.currentInputTokens}${state.tokenCountEstimated ? " (estimated)" : ""}`,
+        `history messages: ${state.historyMessages}`,
+        `compactions: ${state.compactionCount}`,
+        `last compaction: ${state.lastCompactionAt ?? "(none)"}`,
       ].join("\n"),
     });
   },

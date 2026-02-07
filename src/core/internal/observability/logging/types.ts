@@ -7,6 +7,7 @@ export type SessionEvent =
   | { type: "assistant_thinking_delta"; ts: string; delta: string }
   | { type: "assistant_thinking_end"; ts: string }
   | { type: "assistant_end"; ts: string }
+  | { type: "stop"; ts: string; reason: string }
   | { type: "tool_use"; ts: string; toolName: string; input: unknown; preview?: string }
   | {
       type: "tool_result";
@@ -25,6 +26,31 @@ export type SessionEvent =
       preview?: string;
     }
   | { type: "confirm_response"; ts: string; confirmId: string; allowed: boolean }
+  | {
+      type: "context_compaction_start";
+      ts: string;
+      reason: string;
+      beforeTokens: number;
+      tokenLimit: number;
+      messageCount: number;
+      aggressive: boolean;
+    }
+  | {
+      type: "context_compaction_end";
+      ts: string;
+      reason: string;
+      beforeTokens: number;
+      afterTokens: number;
+      removedMessages: number;
+      summaryChars: number;
+      aggressive: boolean;
+    }
+  | {
+      type: "context_compaction_error";
+      ts: string;
+      reason: string;
+      message: string;
+    }
   | { type: "error"; ts: string; message: string; stack?: string };
 
 export type EnvSnapshot = {

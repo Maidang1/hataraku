@@ -51,21 +51,23 @@ export function SlashCommandMenu(props: {
           const descriptionText = truncateText(item.description, descriptionWidth);
 
           return (
-            <Box key={item.name} paddingX={1}>
-              <Text
-                color={isSelected ? COLORS.focus : COLORS.textSoft}
-                backgroundColor={isSelected ? COLORS.bgSelected : undefined}
-              >
-                {isSelected ? "› " : "  "}
-                {nameText.padEnd(nameWidth)}
-              </Text>
-              <Text
-                color={isSelected ? COLORS.text : COLORS.muted}
-                backgroundColor={isSelected ? COLORS.bgSelected : undefined}
-              >
-                {" "}
-                {descriptionText}
-              </Text>
+            <Box key={item.name} marginY={1}>
+              <Box paddingX={1}>
+                <Text
+                  color={isSelected ? COLORS.focus : COLORS.textSoft}
+                  backgroundColor={isSelected ? COLORS.bgSelected : undefined}
+                >
+                  {isSelected ? "› " : "  "}
+                  {nameText.padEnd(nameWidth)}
+                </Text>
+                <Text
+                  color={isSelected ? COLORS.text : COLORS.muted}
+                  backgroundColor={isSelected ? COLORS.bgSelected : undefined}
+                >
+                  {" "}
+                  {descriptionText}
+                </Text>
+              </Box>
             </Box>
           );
         }}

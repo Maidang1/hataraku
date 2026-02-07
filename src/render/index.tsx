@@ -117,8 +117,9 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
   const assistantEventIdRef = useRef<string | null>(null);
   const thinkingEventIdRef = useRef<string | null>(null);
   const terminalColumns = stdout?.columns ?? 120;
-  const terminalRows = stdout?.rows ?? 40;
-  const separatorLine = "─".repeat(Math.max(8, terminalColumns - 2));
+  const layoutPaddingX = 1;
+  const contentColumns = Math.max(20, terminalColumns - layoutPaddingX * 2);
+  const separatorLine = "─".repeat(Math.max(8, contentColumns - 2));
 
   const [tokenUsage, setTokenUsage] = useState({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
 
@@ -126,12 +127,6 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
   const activeTools = useMemo(() => getActiveToolCount(events), [events]);
   const latestTool = useMemo(() => getLatestToolEvent(events), [events]);
   const isModelThinking = loading && activeTools === 0;
-  const maxVisibleEvents = useMemo(() => {
-    const usableRows = Math.max(8, terminalRows - 10);
-    return Math.max(12, Math.min(100, Math.floor(usableRows * 1.6)));
-  }, [terminalRows]);
-  const visibleEvents = useMemo(() => events.slice(-maxVisibleEvents), [events, maxVisibleEvents]);
-  const hiddenEventCount = Math.max(0, events.length - visibleEvents.length);
   const isSlashSuggesting = useMemo(() => {
     return query.trimStart().startsWith("/") && !confirm && !loading;
   }, [query, confirm, loading]);
@@ -238,6 +233,32 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
     const handleTokenUsage = (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => {
       setTokenUsage(usage);
     };
+    const handleContextCompactionStart = (event: {
+      reason: string;
+      beforeTokens: number;
+      tokenLimit: number;
+      aggressive: boolean;
+    }) => {
+      addChatEvent({
+        role: "system",
+        content: `Compacting context (${event.reason}) ${event.beforeTokens}/${event.tokenLimit} tokens${event.aggressive ? " [aggressive]" : ""}...`,
+      });
+    };
+    const handleContextCompactionEnd = (event: {
+      reason: string;
+      beforeTokens: number;
+      afterTokens: number;
+      removedMessages: number;
+      aggressive: boolean;
+    }) => {
+      addChatEvent({
+        role: "system",
+        content: `Context compacted (${event.reason}): ${event.beforeTokens} -> ${event.afterTokens} tokens, removed ${event.removedMessages} messages${event.aggressive ? " [aggressive]" : ""}.`,
+      });
+    };
+    const handleContextCompactionError = (event: { reason: string; message: string }) => {
+      addErrorEvent({ message: `Context compaction failed (${event.reason}): ${event.message}` });
+    };
 
     const handleError = (error: Error) => addErrorEvent({ message: error.message, stack: error.stack });
 
@@ -258,6 +279,9 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
     agent.on("mcpReconnectAttempt", handleMcpReconnectAttempt);
     agent.on("mcpHealthCheck", handleMcpHealthCheck);
     agent.on("mcpCacheHit", handleMcpCacheHit);
+    agent.on("contextCompactionStart", handleContextCompactionStart);
+    agent.on("contextCompactionEnd", handleContextCompactionEnd);
+    agent.on("contextCompactionError", handleContextCompactionError);
     agent.on("error", handleError);
 
     return () => {
@@ -278,6 +302,9 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
       agent.off("mcpReconnectAttempt", handleMcpReconnectAttempt);
       agent.off("mcpHealthCheck", handleMcpHealthCheck);
       agent.off("mcpCacheHit", handleMcpCacheHit);
+      agent.off("contextCompactionStart", handleContextCompactionStart);
+      agent.off("contextCompactionEnd", handleContextCompactionEnd);
+      agent.off("contextCompactionError", handleContextCompactionError);
       agent.off("error", handleError);
     };
   }, []);
@@ -343,9 +370,19 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
       return;
     }
 
-    // Esc: stop current loop or toggle expand on latest tool event
+    // Esc: stop model generation / loop or toggle expand on latest tool event
     if (key.escape) {
-      // If agent is loading, stop the current loop
+      const isModelResponding =
+        loading && (isModelThinking || assistantEventIdRef.current !== null || thinkingEventIdRef.current !== null);
+
+      // If model is currently responding, stop the current run immediately
+      if (isModelResponding) {
+        agent.stop();
+        addChatEvent({ role: "system", content: "Generation stopped." });
+        return;
+      }
+
+      // If agent is still loading for other reasons, stop the whole loop
       if (loading) {
         agent.stop();
         return;
@@ -412,6 +449,7 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
         agent,
         setModelLabel,
         setShowWelcome,
+        setTokenUsage,
       },
       currentQuery,
     );
@@ -422,14 +460,13 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
 
   return (
     <Provider store={globalStore}>
-      <Box flexDirection="column" paddingX={0}>
+      <Box flexDirection="column" paddingX={layoutPaddingX} paddingY={1}>
         <HeaderCard modelLabel={modelLabel} showTip={showWelcome} yoloMode={yolo} />
 
         {/* Streaming timeline — all events in chronological order */}
         {events.length > 0 && (
           <EventTimeline
-            events={visibleEvents}
-            hiddenEventCount={hiddenEventCount}
+            events={events}
             activeConfirmId={confirm?.id ?? null}
           />
         )}
@@ -444,7 +481,7 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
         )}
 
         {/* Input area */}
-        <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column" marginBottom={1} marginTop={1}>
           {confirm ? (
             <ConfirmSelectMenu
               toolName={confirm.toolName}
@@ -464,7 +501,7 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
           )}
         </Box>
 
-        <Box flexDirection="column" marginTop={events.length > 0 ? 0 : 1}>
+        <Box flexDirection="column" marginTop={events.length > 0 ? 1 : 2}>
           <Text color={COLORS.border}>{separatorLine}</Text>
           <Box>
             <Text color={COLORS.accent} bold>❯ </Text>
@@ -488,14 +525,14 @@ function App({ yolo = false }: AppProps): React.JSX.Element {
             commands={filteredSlashCommands}
             selectedIndex={slashSelectedIndex}
             query={query}
-            terminalColumns={terminalColumns}
+            terminalColumns={contentColumns}
           />
         )}
 
         <StatusBar
           model={modelLabel}
           cwd={toDisplayCwd(process.cwd())}
-          terminalColumns={terminalColumns}
+          terminalColumns={contentColumns}
           pendingConfirms={pendingConfirms}
           activeTools={activeTools}
           latestTool={latestTool?.toolName ?? ""}

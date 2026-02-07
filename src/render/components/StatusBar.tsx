@@ -39,7 +39,7 @@ export function StatusBar(props: {
   const hasTokenUsage = tokenUsage.totalTokens > 0;
 
   return (
-    <Box flexDirection="column" marginTop={0}>
+    <Box flexDirection="column" marginTop={1}>
       <Text color={COLORS.border}>{separatorLine}</Text>
       <Box flexDirection="row" justifyContent="space-between">
         <Box>

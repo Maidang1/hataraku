@@ -3,6 +3,7 @@ export type ClaudeSettings = {
   model?: string;
   apiKeyHelper?: string;
   mcpServers?: Record<string, McpServerConfig>;
+  context?: ContextSettings;
   safety?: {
     allowedWriteRoots?: string[];
     autoAllowedBashPrefixes?: string[];
@@ -11,6 +12,16 @@ export type ClaudeSettings = {
   logging?: {
     baseDir?: string;
   };
+};
+
+export type ContextSettings = {
+  modelContextWindowTokens?: number;
+  modelAutoCompactTokenLimit?: number;
+  compactPrompt?: string;
+  compactMaxOutputTokens?: number;
+  recentMessagesToKeep?: number;
+  targetPostCompactRatio?: number;
+  enableAutoCompact?: boolean;
 };
 
 export type McpServerConfig = {
@@ -42,6 +53,7 @@ export type EffectiveConfig = {
   authToken?: string;
   apiKey?: string;
   mcpServers: Record<string, McpServerConfig>;
+  context?: ContextSettings;
   safety?: ClaudeSettings["safety"];
   logging?: ClaudeSettings["logging"];
   sources: string[];

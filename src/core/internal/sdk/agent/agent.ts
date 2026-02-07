@@ -27,6 +27,8 @@ import type {
   ToolExecutionResult,
 } from "../../tools/base";
 import { isToolErrorResult } from "../../tools/base";
+import { resolveContextSettings, type ResolvedContextSettings } from "../../config/defaults";
+import { ContextManager, type TokenCountResult } from "./context-manager";
 
 function repairJsonIfUnbalanced(value: string): string {
   const stack: string[] = [];
@@ -79,6 +81,27 @@ function parseToolInput(jsonStr: string): any | undefined {
   }
 }
 
+function isContextOverflowError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("context") &&
+    (lower.includes("token") || lower.includes("length") || lower.includes("window"))
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const name = error.name.toLowerCase();
+  const message = error.message.toLowerCase();
+  return (
+    name.includes("abort") ||
+    message.includes("aborted") ||
+    message.includes("aborterror") ||
+    message.includes("cancelled")
+  );
+}
+
 export interface AgentEvents {
   userMessage: (message: { role: "user"; content: string }) => void;
   assistantMessageStart: (message: {
@@ -110,6 +133,25 @@ export interface AgentEvents {
   mcpReconnectAttempt: (serverName: string, attempt: number, maxRetries: number) => void;
   mcpHealthCheck: (serverName: string, latency: number, healthy: boolean) => void;
   mcpCacheHit: (serverName: string) => void;
+  contextCompactionStart: (event: {
+    reason: string;
+    beforeTokens: number;
+    tokenLimit: number;
+    messageCount: number;
+    estimatedTokens: boolean;
+    aggressive: boolean;
+  }) => void;
+  contextCompactionEnd: (event: {
+    reason: string;
+    beforeTokens: number;
+    afterTokens: number;
+    removedMessages: number;
+    summaryChars: number;
+    estimatedBeforeTokens: boolean;
+    estimatedAfterTokens: boolean;
+    aggressive: boolean;
+  }) => void;
+  contextCompactionError: (event: { reason: string; message: string }) => void;
   error: (error: Error) => void;
 }
 
@@ -142,6 +184,13 @@ class Agent extends EventEmitter {
   private currentAbortController: AbortController | null = null;
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
+  private contextSettings: ResolvedContextSettings;
+  private contextManager: ContextManager;
+  private contextCompactionCount = 0;
+  private lastCompactionAt?: string;
+  private lastCompactionBeforeTokens?: number;
+  private lastCompactionAfterTokens?: number;
+  private stopRequested = false;
 
   constructor(params: {
     model: string;
@@ -162,6 +211,7 @@ class Agent extends EventEmitter {
         authToken: config.authToken || process.env.ANTHROPIC_AUTH_TOKEN,
         apiKey: config.apiKey,
       });
+    this.contextSettings = resolveContextSettings(model, config.context);
     this.tools = new Map<string, Tool>(tools ?? []);
     this.projectRoot = process.cwd();
     this.sessionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -201,8 +251,16 @@ class Agent extends EventEmitter {
       injectSkillDetails: (name, details) => this.injectSkillDetails(name, details),
     });
     this.tools.set(skillsTool.name, skillsTool);
-    this.mcpServers = mcpServers;
+    this.mcpServers = mcpServers ?? config.mcpServers;
     this.hooks = hooks ?? {};
+    this.contextManager = new ContextManager({
+      client: this.client,
+      model: this.model,
+      getSystemPrompt: () => this.getSystemPrompt(),
+      getToolSchemas: () => this.getToolSchemas(),
+      getThinking: () => this.getThinkingConfig(),
+      settings: this.contextSettings,
+    });
     
     // Initialize SkillsManager
     const codexHome = path.join(os.homedir(), ".codex");
@@ -260,10 +318,58 @@ class Agent extends EventEmitter {
     return this.getThinkingState();
   }
 
+  async getContextState(): Promise<{
+    modelContextWindowTokens: number;
+    modelAutoCompactTokenLimit: number;
+    enableAutoCompact: boolean;
+    currentInputTokens: number;
+    tokenCountEstimated: boolean;
+    historyMessages: number;
+    compactionCount: number;
+    lastCompactionAt?: string;
+    lastCompactionBeforeTokens?: number;
+    lastCompactionAfterTokens?: number;
+  }> {
+    this.contextManager.updateModel(this.model);
+    const tokenCount = await this.contextManager.countTokens(this.conversationHistory);
+    return {
+      modelContextWindowTokens: this.contextSettings.modelContextWindowTokens,
+      modelAutoCompactTokenLimit: this.contextSettings.modelAutoCompactTokenLimit,
+      enableAutoCompact: this.contextSettings.enableAutoCompact,
+      currentInputTokens: tokenCount.inputTokens,
+      tokenCountEstimated: tokenCount.estimated,
+      historyMessages: this.conversationHistory.length,
+      compactionCount: this.contextCompactionCount,
+      lastCompactionAt: this.lastCompactionAt,
+      lastCompactionBeforeTokens: this.lastCompactionBeforeTokens,
+      lastCompactionAfterTokens: this.lastCompactionAfterTokens,
+    };
+  }
+
+  resetConversation(): void {
+    this.conversationHistory = [];
+    this.contextCompactionCount = 0;
+    this.lastCompactionAt = undefined;
+    this.lastCompactionBeforeTokens = undefined;
+    this.lastCompactionAfterTokens = undefined;
+    this.totalInputTokens = 0;
+    this.totalOutputTokens = 0;
+    this.emit("tokenUsage", this.getTokenUsage());
+  }
+
   stop(): void {
+    this.stopRequested = true;
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.logger.append({ type: "stop", ts: new Date().toISOString(), reason: "user_requested" });
+    }
+  }
+
+  stopCurrentMessage(): void {
+    this.stopRequested = true;
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.logger.append({ type: "stop", ts: new Date().toISOString(), reason: "user_requested_message" });
     }
   }
 
@@ -293,7 +399,7 @@ class Agent extends EventEmitter {
       const mcpLoader = new McpDependencyLoader();
       const { mcpServers, warnings } = mcpLoader.loadDependencies(
         this.loadedSkills.skills,
-        this.mcpServers
+        this.mcpServers ?? getEffectiveConfig().mcpServers
       );
 
       // 报告警告
@@ -395,6 +501,133 @@ class Agent extends EventEmitter {
 
   private getToolSchemas(): Anthropic.Tool[] {
     return Array.from(this.tools.values()).map((tool) => tool.getSchema());
+  }
+
+  private getThinkingConfig(): Anthropic.ThinkingConfigParam | undefined {
+    if (!this.thinkingEnabled) return undefined;
+    return {
+      type: "enabled",
+      budget_tokens: this.thinkingBudgetTokens,
+    } satisfies Anthropic.ThinkingConfigEnabled;
+  }
+
+  private async compactHistory(params: {
+    reason: string;
+    beforeCount: TokenCountResult;
+    aggressive?: boolean;
+  }): Promise<boolean> {
+    if (this.conversationHistory.length < 4) return false;
+    const aggressive = params.aggressive ?? false;
+    const keepRecentMessages = aggressive
+      ? Math.max(2, Math.floor(this.contextSettings.recentMessagesToKeep / 2))
+      : this.contextSettings.recentMessagesToKeep;
+
+    this.emit("contextCompactionStart", {
+      reason: params.reason,
+      beforeTokens: params.beforeCount.inputTokens,
+      tokenLimit: this.contextSettings.modelAutoCompactTokenLimit,
+      messageCount: this.conversationHistory.length,
+      estimatedTokens: params.beforeCount.estimated,
+      aggressive,
+    });
+    this.logger.append({
+      type: "context_compaction_start",
+      ts: new Date().toISOString(),
+      reason: params.reason,
+      beforeTokens: params.beforeCount.inputTokens,
+      tokenLimit: this.contextSettings.modelAutoCompactTokenLimit,
+      messageCount: this.conversationHistory.length,
+      aggressive,
+    });
+
+    const compacted = await this.contextManager.compactHistory(this.conversationHistory, {
+      reason: params.reason,
+      keepRecentMessages,
+    });
+    if (!compacted) return false;
+
+    this.conversationHistory = [compacted.summaryMessage, ...compacted.preservedTail];
+    const afterCount = await this.contextManager.countTokens(this.conversationHistory);
+    this.contextCompactionCount += 1;
+    this.lastCompactionAt = new Date().toISOString();
+    this.lastCompactionBeforeTokens = params.beforeCount.inputTokens;
+    this.lastCompactionAfterTokens = afterCount.inputTokens;
+
+    this.emit("contextCompactionEnd", {
+      reason: params.reason,
+      beforeTokens: params.beforeCount.inputTokens,
+      afterTokens: afterCount.inputTokens,
+      removedMessages: compacted.removedMessageCount,
+      summaryChars: compacted.summary.length,
+      estimatedBeforeTokens: params.beforeCount.estimated,
+      estimatedAfterTokens: afterCount.estimated,
+      aggressive,
+    });
+    this.logger.append({
+      type: "context_compaction_end",
+      ts: this.lastCompactionAt,
+      reason: params.reason,
+      beforeTokens: params.beforeCount.inputTokens,
+      afterTokens: afterCount.inputTokens,
+      removedMessages: compacted.removedMessageCount,
+      summaryChars: compacted.summary.length,
+      aggressive,
+    });
+    return true;
+  }
+
+  async compactNow(params: { reason?: string; aggressive?: boolean } = {}): Promise<{
+    compacted: boolean;
+    reason: string;
+    beforeTokens: number;
+    afterTokens: number;
+    estimatedBeforeTokens: boolean;
+    estimatedAfterTokens: boolean;
+  }> {
+    this.contextManager.updateModel(this.model);
+    const reason = params.reason ?? "manual";
+    const beforeCount = await this.contextManager.countTokens(this.conversationHistory);
+    const compacted = await this.compactHistory({
+      reason,
+      beforeCount,
+      aggressive: params.aggressive,
+    });
+    const afterCount = await this.contextManager.countTokens(this.conversationHistory);
+    return {
+      compacted,
+      reason,
+      beforeTokens: beforeCount.inputTokens,
+      afterTokens: afterCount.inputTokens,
+      estimatedBeforeTokens: beforeCount.estimated,
+      estimatedAfterTokens: afterCount.estimated,
+    };
+  }
+
+  private async maybeCompactBeforeRequest(reason = "auto_threshold"): Promise<void> {
+    this.contextManager.updateModel(this.model);
+    const beforeCount = await this.contextManager.countTokens(this.conversationHistory);
+    if (!this.contextManager.shouldCompact(beforeCount.inputTokens)) return;
+    try {
+      await this.compactHistory({ reason, beforeCount });
+      const afterCount = await this.contextManager.countTokens(this.conversationHistory);
+      if (afterCount.inputTokens >= this.contextSettings.modelAutoCompactTokenLimit) {
+        await this.compactHistory({
+          reason: `${reason}_aggressive`,
+          beforeCount: afterCount,
+          aggressive: true,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit("contextCompactionError", { reason, message });
+      this.logger.append({
+        type: "context_compaction_error",
+        ts: new Date().toISOString(),
+        reason,
+        message,
+      });
+      throw error;
+    }
   }
 
   private normalizeToolResult(result: ToolExecutionResult): { content: string; filesChanged?: string[] } {
@@ -526,6 +759,7 @@ class Agent extends EventEmitter {
 
   async runStream(input: string, signal?: AbortSignal) {
     try {
+      this.stopRequested = false;
       this.hooks.onLoadingChange?.(true);
       this.emit("userMessage", { role: "user", content: input });
       this.logger.append({ type: "user_message", ts: new Date().toISOString(), content: input });
@@ -540,21 +774,48 @@ class Agent extends EventEmitter {
         this.currentAbortController.signal;
 
       while (continueLoop) {
-        const thinking = this.thinkingEnabled
-          ? ({
-              type: "enabled",
-              budget_tokens: this.thinkingBudgetTokens,
-            } satisfies Anthropic.ThinkingConfigEnabled)
-          : undefined;
-        const stream = await this.client.messages.create({
-          max_tokens: this.maxTokens,
-          messages: this.conversationHistory,
-          model: this.model,
-          stream: true,
-          system: this.getSystemPrompt(),
-          tools: this.getToolSchemas(),
-          thinking,
-        });
+        await this.maybeCompactBeforeRequest();
+        this.contextManager.updateModel(this.model);
+        const thinking = this.getThinkingConfig();
+        let stream: AsyncIterable<Anthropic.MessageStreamEvent>;
+        let overflowRetried = false;
+        while (true) {
+          try {
+            stream = await this.client.messages.create({
+              max_tokens: this.maxTokens,
+              messages: this.conversationHistory,
+              model: this.model,
+              stream: true,
+              system: this.getSystemPrompt(),
+              tools: this.getToolSchemas(),
+              thinking,
+            });
+            break;
+          } catch (error) {
+            if (overflowRetried || !isContextOverflowError(error)) {
+              throw error;
+            }
+            try {
+              const beforeOverflowCompact = await this.contextManager.countTokens(this.conversationHistory);
+              await this.compactHistory({
+                reason: "overflow_retry",
+                beforeCount: beforeOverflowCompact,
+                aggressive: true,
+              });
+            } catch (compactError) {
+              const message = compactError instanceof Error ? compactError.message : String(compactError);
+              this.emit("contextCompactionError", { reason: "overflow_retry", message });
+              this.logger.append({
+                type: "context_compaction_error",
+                ts: new Date().toISOString(),
+                reason: "overflow_retry",
+                message,
+              });
+              throw compactError;
+            }
+            overflowRetried = true;
+          }
+        }
 
         let isFirstDelta = true;
         let currentContent: Anthropic.ContentBlock[] = [];
@@ -704,6 +965,11 @@ class Agent extends EventEmitter {
           content: currentContent,
         });
 
+        if (this.stopRequested || combinedSignal.aborted) {
+          continueLoop = false;
+          continue;
+        }
+
         // 检查是否需要执行 tool
         const toolUseBlocks = currentContent.filter(
           (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
@@ -738,6 +1004,9 @@ class Agent extends EventEmitter {
         }
       }
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       this.emit("error", error as Error);
       const err = error as any;
       this.logger.append({
@@ -749,6 +1018,7 @@ class Agent extends EventEmitter {
     } finally {
       this.hooks.onLoadingChange?.(false);
       this.currentAbortController = null;
+      this.stopRequested = false;
     }
   }
 }
